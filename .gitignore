@@ -1,0 +1,26 @@
+# Environments
+.env
+.venv/
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Next.js
+.next/
+out/
+build/
+
+# Mac
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
+
+# Layout Models
+yolov8x-doclaynet.pt

@@ -1,0 +1,167 @@
+{
+  "version": "1.2.0",
+  "learned_skills": {
+    "ditto_forward_fill": {
+      "active": true,
+      "symbols": [
+        "\"",
+        "''",
+        "\u201d",
+        "\u201c",
+        ",,",
+        "do",
+        "ditto",
+        "\u201c\u201c"
+      ],
+      "target_fields": [
+        "hsnCode",
+        "productName",
+        "qtyUnit"
+      ]
+    },
+    "bracket_group_disentanglement": {
+      "active": true,
+      "description": "Disentangle right-curly-bracket group weights and map piece counts to quantity and group weights to totals."
+    },
+    "gst_invoice_patterns": {
+      "plates": {
+        "hsn_prefix": "7208",
+        "unit": "MT",
+        "name": "Structural Steel Plate"
+      },
+      "angles": {
+        "hsn_prefix": "7216",
+        "unit": "MT",
+        "name": "Steel Angle ISA"
+      },
+      "beams": {
+        "hsn_prefix": "7216",
+        "unit": "MT",
+        "name": "NPB Heavy Beam"
+      }
+    }
+  },
+  "documents_processed": 26,
+  "patterns_evolved": [
+    {
+      "timestamp": "2026-08-27 23:05:55",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-27 23:07:05",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-27 23:11:30",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-27 23:21:11",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-27 23:29:50",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-27 23:45:40",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-27 23:49:26",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-27 23:51:13",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 10:43:29",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 10:49:54",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 13:09:33",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 13:18:51",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 13:49:47",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 14:04:49",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 14:06:17",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 14:10:00",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 14:19:05",
+      "items_standardized": 0,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 14:20:07",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 14:21:32",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 15:13:44",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    }
+  ]
+}
