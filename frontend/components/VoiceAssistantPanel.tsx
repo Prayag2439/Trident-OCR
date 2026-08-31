@@ -1,0 +1,473 @@
+"use client";
+
+import { useState, useRef, useCallback, useEffect } from "react";
+import { Mic, MicOff, Loader2, Bot, User, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChallanData } from "@/types/ocr";
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
+// ── Voice Activity Detection (VAD) config ─────────────────────────────────────
+// RMS amplitude (0–1) below which audio is considered silence
+const SILENCE_THRESHOLD = 0.018;
+// Minimum ms of continuous silence before auto-stopping
+const SILENCE_DURATION_MS = 1600;
+// Wait this many ms after recording starts before VAD can trigger auto-stop
+// (prevents instantly stopping before the user has begun speaking)
+const VAD_GRACE_PERIOD_MS = 800;
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+}
+
+type RecordingState = "idle" | "listening" | "processing";
+
+export interface VoiceAssistantPanelProps {
+  currentData: ChallanData;
+  onApplyUpdates: (updates: Partial<ChallanData>) => void;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export function VoiceAssistantPanel({ currentData, onApplyUpdates }: VoiceAssistantPanelProps) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [recordingState, setRecordingState] = useState<RecordingState>("idle");
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: "welcome",
+      role: "assistant",
+      text: 'Hello! I\'ll fill the challan form as you speak. Tap the mic and say something like "Customer is Rahul Sharma" or "Add 20 bags of cement at ₹450".',
+    },
+  ]);
+
+  // ── Refs ───────────────────────────────────────────────────────────────────
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const isListeningRef = useRef(false);
+  const hasSpeechRef = useRef(false);          // true once the user has actually spoken
+  const silenceStartRef = useRef<number | null>(null);
+  const vadRafRef = useRef<number | null>(null);
+  const recordingStartRef = useRef<number>(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // pendingContextRef holds partial transcript for multi-segment values (e.g. incomplete GSTIN)
+  const pendingContextRef = useRef<string>("");
+
+  // Use a ref for processAudioBlob so startRecording can call it without circular useCallback dep
+  const processAudioBlobRef = useRef<(blob: Blob, context: string) => Promise<void>>();
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const addMessage = useCallback((role: "user" | "assistant", text: string) => {
+    setMessages((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${role}`, role, text },
+    ]);
+  }, []);
+
+  // Stop the WebAudio VAD loop and close the AudioContext
+  const stopVAD = useCallback(() => {
+    if (vadRafRef.current !== null) {
+      cancelAnimationFrame(vadRafRef.current);
+      vadRafRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch { /* ignore */ }
+      audioContextRef.current = null;
+    }
+    silenceStartRef.current = null;
+    hasSpeechRef.current = false;
+  }, []);
+
+  // Stop the MediaRecorder (triggers onstop → processAudioBlob)
+  const stopRecording = useCallback(() => {
+    isListeningRef.current = false;
+    stopVAD();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+  }, [stopVAD]);
+
+  // ── processAudioBlob ───────────────────────────────────────────────────────
+
+  const processAudioBlob = useCallback(
+    async (blob: Blob, continueFromContext: string) => {
+      setRecordingState("processing");
+
+      try {
+        const formData = new FormData();
+        formData.append("audio", blob, "recording.webm");
+        formData.append("challan_state", JSON.stringify(currentData));
+        if (continueFromContext) {
+          formData.append("partial_context", continueFromContext);
+        }
+
+        const res = await fetch(`${BACKEND_URL}/api/v1/assistant/voice`, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: "Unknown error" }));
+          addMessage("assistant", `⚠️ ${err.detail || "Voice processing failed."}`);
+          pendingContextRef.current = "";
+          return;
+        }
+
+        const result = await res.json();
+
+        // Build combined transcript display
+        const combined = continueFromContext
+          ? `${continueFromContext} ${result.transcript || ""}`.trim()
+          : (result.transcript || "").trim();
+
+        if (combined) addMessage("user", combined);
+
+        // Backend signals to keep listening (e.g. incomplete GSTIN)
+        if (result.continueListening) {
+          pendingContextRef.current = combined;
+          addMessage("assistant", result.clarification || "I need a bit more — please continue speaking…");
+          setRecordingState("idle");
+          // Small delay so the user can see the prompt, then auto-restart
+          setTimeout(() => {
+            startRecordingWithContext(pendingContextRef.current);
+          }, 600);
+          return;
+        }
+
+        // Value is complete — clear any accumulated context
+        pendingContextRef.current = "";
+
+        if (result.clarification) {
+          addMessage("assistant", result.clarification);
+          return;
+        }
+
+        if (result.updates && Object.keys(result.updates).length > 0) {
+          onApplyUpdates(result.updates);
+          const changedFields = Object.keys(result.updates).filter((k) => k !== "items");
+          const hasItems = result.updates.items !== undefined;
+          const parts: string[] = [];
+          if (changedFields.length) parts.push(`Updated: ${changedFields.join(", ")}`);
+          if (hasItems) parts.push("Items updated");
+          addMessage("assistant", `✓ ${parts.join(". ")}. You can keep speaking.`);
+        } else {
+          addMessage("assistant", "I didn't find any challan fields in that. Could you rephrase?");
+        }
+      } catch {
+        addMessage("assistant", "⚠️ Could not reach the server. Please check the backend is running.");
+        pendingContextRef.current = "";
+      } finally {
+        setRecordingState("idle");
+      }
+    },
+    [currentData, onApplyUpdates, addMessage]
+  );
+
+  // Keep ref in sync so startRecording can call it without circular deps
+  useEffect(() => {
+    processAudioBlobRef.current = processAudioBlob;
+  }, [processAudioBlob]);
+
+  // ── VAD — Voice Activity Detection ────────────────────────────────────────
+
+  const startVAD = useCallback((stream: MediaStream) => {
+    try {
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.3;
+      source.connect(analyser);
+      audioContextRef.current = audioCtx;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const tick = () => {
+        if (!isListeningRef.current) return;
+
+        analyser.getByteFrequencyData(dataArray);
+        // Compute RMS normalised to 0–1
+        const rms = Math.sqrt(
+          dataArray.reduce((sum, v) => sum + v * v, 0) / dataArray.length
+        ) / 255;
+
+        const now = Date.now();
+        const gracePeriodPassed = now - recordingStartRef.current > VAD_GRACE_PERIOD_MS;
+
+        if (rms > SILENCE_THRESHOLD) {
+          // Voice detected — reset silence timer and mark that the user has spoken
+          hasSpeechRef.current = true;
+          silenceStartRef.current = null;
+        } else if (hasSpeechRef.current && gracePeriodPassed) {
+          // Silence after speech — start counting
+          if (silenceStartRef.current === null) {
+            silenceStartRef.current = now;
+          } else if (now - silenceStartRef.current >= SILENCE_DURATION_MS) {
+            // Sustained silence — auto-stop
+            stopRecording();
+            return;
+          }
+        }
+
+        vadRafRef.current = requestAnimationFrame(tick);
+      };
+
+      vadRafRef.current = requestAnimationFrame(tick);
+    } catch (e) {
+      // VAD unavailable (e.g. AudioContext blocked) — user must tap manually
+      console.warn("[VAD] Web Audio API unavailable:", e);
+    }
+  }, [stopRecording]);
+
+  // ── startRecordingWithContext ───────────────────────────────────────────────
+
+  const startRecordingWithContext = useCallback(async (context: string) => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      isListeningRef.current = true;
+      hasSpeechRef.current = false;
+      silenceStartRef.current = null;
+      recordingStartRef.current = Date.now();
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/mp4";
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (blob.size > 1200) {
+          // Automatically process — no manual confirmation needed
+          processAudioBlobRef.current?.(blob, context);
+        } else {
+          setRecordingState("idle");
+          if (!context) {
+            addMessage("assistant", "I didn't catch any audio. Please try again.");
+          }
+        }
+      };
+
+      recorder.start();
+      setRecordingState("listening");
+      startVAD(stream);
+    } catch {
+      addMessage("assistant", "⚠️ Microphone access denied. Please allow microphone permissions.");
+      setRecordingState("idle");
+    }
+  }, [startVAD, addMessage]);
+
+  // ── Mic button click handler ───────────────────────────────────────────────
+
+  const handleMicClick = useCallback(() => {
+    if (recordingState === "idle") {
+      // Start fresh (pendingContext may be set if continuing a structured value)
+      startRecordingWithContext(pendingContextRef.current);
+    } else if (recordingState === "listening") {
+      // Manual stop — user is done speaking
+      stopRecording();
+    }
+  }, [recordingState, startRecordingWithContext, stopRecording]);
+
+  // ── Cleanup on unmount ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      isListeningRef.current = false;
+      stopVAD();
+      if (mediaRecorderRef.current?.state !== "inactive") {
+        try { mediaRecorderRef.current?.stop(); } catch { /* ignore */ }
+      }
+    };
+  }, [stopVAD]);
+
+  // ── Collapsed view ─────────────────────────────────────────────────────────
+
+  if (isCollapsed) {
+    return (
+      <div className="flex-shrink-0 w-10 h-full flex flex-col items-center bg-[#07080b] border-r border-white/10 py-3 gap-3">
+        {/* Expand button */}
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(false)}
+          className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+          title="Expand voice assistant"
+        >
+          <ChevronRight className="w-4 h-4 text-white/40" />
+        </button>
+
+        {/* Vertical label */}
+        <div className="flex-1 flex items-center justify-center">
+          <span
+            className="text-[9px] font-bold uppercase tracking-widest text-white/20 select-none"
+            style={{ writingMode: "vertical-rl" }}
+          >
+            Voice
+          </span>
+        </div>
+
+        {/* Mic button in collapsed strip */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsCollapsed(false);
+            // Brief delay so the panel expands before starting
+            setTimeout(() => handleMicClick(), 100);
+          }}
+          disabled={recordingState !== "idle"}
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors
+            ${recordingState === "listening" ? "bg-red-600" : "bg-indigo-600 hover:bg-indigo-500"}
+            disabled:opacity-40`}
+          title="Start voice input"
+        >
+          <Mic className="w-3.5 h-3.5 text-white" />
+        </button>
+      </div>
+    );
+  }
+
+  // ── Expanded view ──────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex-shrink-0 w-80 h-full flex flex-col bg-[#07080b] text-white border-r border-white/10">
+
+      {/* Header */}
+      <div className="flex-shrink-0 px-4 py-3 border-b border-white/10 flex items-center gap-2">
+        <Bot className="w-4 h-4 text-indigo-400" />
+        <span className="text-xs font-bold uppercase tracking-widest text-white/70">Voice Assistant</span>
+        <span className="ml-auto flex items-center gap-2">
+          <span className="text-[10px] text-white/25 font-mono hidden sm:inline">GPT-5 + Whisper</span>
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(true)}
+            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+            title="Collapse voice assistant"
+          >
+            <ChevronLeft className="w-3.5 h-3.5 text-white/40" />
+          </button>
+        </span>
+      </div>
+
+      {/* Message history — scrollable */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+          >
+            <div
+              className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5
+                ${msg.role === "assistant" ? "bg-indigo-600" : "bg-gray-700"}`}
+            >
+              {msg.role === "assistant"
+                ? <Bot className="w-3.5 h-3.5 text-white" />
+                : <User className="w-3.5 h-3.5 text-white" />}
+            </div>
+            <div
+              className={`max-w-[82%] px-3 py-2 rounded-xl text-xs leading-relaxed
+                ${msg.role === "assistant"
+                  ? "bg-white/[0.07] text-white/80 border border-white/10"
+                  : "bg-indigo-600/30 text-white border border-indigo-500/30"
+                }`}
+            >
+              {msg.text}
+            </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* ── Bottom: centered mic control ──────────────────────────────────── */}
+      <div className="flex-shrink-0 border-t border-white/10 flex flex-col items-center pb-6 pt-4 gap-3">
+
+        {/* Status text */}
+        <div className="h-5 flex items-center justify-center">
+          {recordingState === "idle" && !pendingContextRef.current && (
+            <span className="text-[11px] text-white/30">Tap to speak</span>
+          )}
+          {recordingState === "idle" && pendingContextRef.current && (
+            <span className="text-[11px] text-amber-400/80">Tap to continue…</span>
+          )}
+          {recordingState === "listening" && (
+            <span className="flex items-center gap-1.5 text-[11px] text-red-400 font-semibold">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              Listening… tap to stop
+            </span>
+          )}
+          {recordingState === "processing" && (
+            <span className="flex items-center gap-1.5 text-[11px] text-indigo-400 font-semibold">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Processing…
+            </span>
+          )}
+        </div>
+
+        {/* Mic button — centered at bottom */}
+        <button
+          type="button"
+          onClick={handleMicClick}
+          disabled={recordingState === "processing"}
+          aria-label={recordingState === "listening" ? "Stop recording" : "Start recording"}
+          className={`relative w-14 h-14 rounded-full flex items-center justify-center
+            transition-all duration-200 shadow-lg focus:outline-none
+            ${recordingState === "listening"
+              ? "bg-red-600 hover:bg-red-700 shadow-red-900/60"
+              : recordingState === "processing"
+              ? "bg-indigo-800 opacity-60 cursor-not-allowed"
+              : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-900/50 hover:scale-105 active:scale-95"
+            }`}
+        >
+          {recordingState === "processing" ? (
+            <Loader2 className="w-5 h-5 animate-spin text-white" />
+          ) : recordingState === "listening" ? (
+            <MicOff className="w-5 h-5 text-white" />
+          ) : (
+            <Mic className="w-5 h-5 text-white" />
+          )}
+
+          {/* Animated pulse rings while listening */}
+          {recordingState === "listening" && (
+            <>
+              <span className="absolute inset-0 rounded-full bg-red-500 opacity-20 animate-ping" />
+              <span
+                className="absolute rounded-full border border-red-500/25 animate-ping"
+                style={{ inset: "-10px", animationDelay: "0.35s" }}
+              />
+            </>
+          )}
+        </button>
+
+        {/* Compact example prompts */}
+        <div className="space-y-0.5 mt-1">
+          {[
+            '"Customer is Rahul Sharma"',
+            '"Add 20 bags of cement"',
+            '"GSTIN is 27ABCDE1234F1Z5"',
+          ].map((tip) => (
+            <p key={tip} className="text-[9px] text-white/20 text-center font-mono">
+              {tip}
+            </p>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

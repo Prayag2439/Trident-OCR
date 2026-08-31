@@ -2,6 +2,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers.process import router as process_router
+from routers.assistant import router as assistant_router
 from config import settings
 
 app = FastAPI(
@@ -24,6 +25,7 @@ app.add_middleware(
 )
 
 app.include_router(process_router)
+app.include_router(assistant_router)
 
 @app.get("/")
 def root():

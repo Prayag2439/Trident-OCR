@@ -25,6 +25,8 @@ import {
   Settings,
   Search,
   AlertCircle,
+  Mic,
+  PenLine,
 } from "lucide-react";
 import { SavedChallan, ChallanData } from "@/types/ocr";
 
@@ -32,6 +34,7 @@ interface DashboardProps {
   challans: SavedChallan[];
   onUpload: () => void;
   onNewChallan: () => void;
+  onNewVoiceChallan: () => void;
   onEdit: (challan: SavedChallan) => void;
   onView: (data: ChallanData) => void;
   onDelete: (id: string) => void;
@@ -308,11 +311,12 @@ function exportChallanCSV(data: ChallanData): void {
   document.body.removeChild(link);
 }
 
-export function Dashboard({ challans, onUpload, onNewChallan, onEdit, onView, onDelete }: DashboardProps) {
+export function Dashboard({ challans, onUpload, onNewChallan, onNewVoiceChallan, onEdit, onView, onDelete }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [jsonModal, setJsonModal] = useState<{ data: object; challanNo: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [newChallanModal, setNewChallanModal] = useState(false);
   const [apiConfig, setApiConfig] = useState<{ endpoint: string; token: string }>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -378,7 +382,7 @@ export function Dashboard({ challans, onUpload, onNewChallan, onEdit, onView, on
           </button>
           <button
             type="button"
-            onClick={onNewChallan}
+            onClick={() => setNewChallanModal(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#1a237e] text-white text-sm font-bold hover:bg-[#283593] transition-colors shadow-md"
           >
             <Plus className="w-4 h-4" />
@@ -598,6 +602,57 @@ export function Dashboard({ challans, onUpload, onNewChallan, onEdit, onView, on
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* New Challan Choice Modal */}
+      {newChallanModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setNewChallanModal(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="text-sm font-bold text-gray-900">New Challan</h3>
+              <button type="button" onClick={() => setNewChallanModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+            {/* Options */}
+            <div className="p-4 space-y-3">
+              <button
+                type="button"
+                onClick={() => { setNewChallanModal(false); onNewChallan(); }}
+                className="w-full flex items-start gap-4 px-4 py-4 rounded-xl border-2 border-gray-200 hover:border-[#1a237e] hover:bg-[#1a237e]/5 transition-all text-left group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-[#1a237e]/10 flex items-center justify-center flex-shrink-0 group-hover:bg-[#1a237e]/20 transition-colors">
+                  <PenLine className="w-5 h-5 text-[#1a237e]" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Manual Challan</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Fill in challan fields manually using the form.</p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setNewChallanModal(false); onNewVoiceChallan(); }}
+                className="w-full flex items-start gap-4 px-4 py-4 rounded-xl border-2 border-gray-200 hover:border-indigo-500 hover:bg-indigo-50/50 transition-all text-left group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-200 transition-colors">
+                  <Mic className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">Voice Assisted Challan</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Dictate challan details using your microphone. GPT-5 fills the form automatically.</p>
+                </div>
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
 

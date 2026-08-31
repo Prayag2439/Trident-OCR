@@ -167,6 +167,6 @@ export interface SavedChallan {
   id: string;
   savedAt: string;
   previewImageBase64?: string;
-  source?: "manual" | "upload";
+  source?: "manual" | "upload" | "voice";
   data: ChallanData;
 }

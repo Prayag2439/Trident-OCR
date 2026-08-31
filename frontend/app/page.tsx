@@ -20,6 +20,7 @@ import { DocumentViewer } from "@/components/DocumentViewer";
 import { ChallanEditPanel } from "@/components/ChallanEditPanel";
 import { ChallanPrintView } from "@/components/ChallanPrintView";
 import { Dashboard } from "@/components/Dashboard";
+import { VoiceAssistantPanel } from "@/components/VoiceAssistantPanel";
 import {
   EWayBillInvoiceData,
   ChallanData,
@@ -156,10 +157,14 @@ export default function Home() {
   const [challans, setChallans] = useState<SavedChallan[]>([]);
   const [editingChallan, setEditingChallan] = useState<ChallanData | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingSource, setEditingSource] = useState<"manual" | "upload" | null>(null);
+  const [editingSource, setEditingSource] = useState<"manual" | "upload" | "voice" | null>(null);
   const [editingPreview, setEditingPreview] = useState<string | null>(null);
   const [printData, setPrintData] = useState<ChallanData | null>(null);
   const [rawTextCopied, setRawTextCopied] = useState(false);
+  // Incoming updates pushed from VoiceAssistantPanel → ChallanEditPanel
+  const [incomingUpdates, setIncomingUpdates] = useState<Partial<ChallanData> | null>(null);
+  // Tracks the current live challan data for voice panel context
+  const [liveChallanData, setLiveChallanData] = useState<ChallanData | null>(null);
 
   // Empty ChallanData for "New Challan" (manual entry)
   const emptyChalllanData = useCallback((): ChallanData => ({
@@ -203,6 +208,9 @@ export default function Home() {
       setEditingId(null); // new challan (not editing existing)
       setEditingSource("upload");
       setEditingPreview(result.document_meta.preview_image_base64 || null);
+      // Always clear voice-session state before opening a fresh upload result
+      setIncomingUpdates(null);
+      setLiveChallanData(null);
       setAppView("edit");
     }
   }, [result, appView]);
@@ -215,6 +223,8 @@ export default function Home() {
   const handleUploadFile = useCallback(
     (f: File) => {
       setEditingId(null);
+      setIncomingUpdates(null);
+      setLiveChallanData(null);
       processFile(f);
     },
     [processFile]
@@ -253,6 +263,8 @@ export default function Home() {
       setEditingId(null);
       setEditingSource(null);
       setEditingPreview(null);
+      setIncomingUpdates(null);
+      setLiveChallanData(null);
       setAppView("dashboard");
     },
     [editingId, editingSource, editingPreview, reset, result]
@@ -263,6 +275,8 @@ export default function Home() {
     setEditingId(challan.id);
     setEditingSource(challan.source || "manual");
     setEditingPreview(challan.previewImageBase64 || null);
+    setIncomingUpdates(null);
+    setLiveChallanData(null);
     setAppView("edit");
   }, []);
 
@@ -280,6 +294,8 @@ export default function Home() {
     setEditingId(null);
     setEditingSource(null);
     setEditingPreview(null);
+    setIncomingUpdates(null);
+    setLiveChallanData(null);
     setAppView("dashboard");
   }, [reset]);
 
@@ -289,6 +305,19 @@ export default function Home() {
     setEditingId(null);
     setEditingSource("manual");
     setEditingPreview(null);
+    setIncomingUpdates(null);
+    setLiveChallanData(null);
+    setAppView("edit");
+  }, [reset, emptyChalllanData]);
+
+  const handleNewVoiceChallan = useCallback(() => {
+    reset();
+    setEditingChallan(emptyChalllanData());
+    setEditingId(null);
+    setEditingSource("voice");
+    setEditingPreview(null);
+    setIncomingUpdates(null);
+    setLiveChallanData(null);
     setAppView("edit");
   }, [reset, emptyChalllanData]);
 
@@ -358,6 +387,7 @@ export default function Home() {
             challans={challans}
             onUpload={() => setAppView("upload")}
             onNewChallan={handleNewChallan}
+            onNewVoiceChallan={handleNewVoiceChallan}
             onEdit={handleEditFromDashboard}
             onView={handleViewChallan}
             onDelete={handleDeleteChallan}
@@ -489,13 +519,11 @@ export default function Home() {
           </div>
         )}
 
-        {/* VIEW: Edit — Two-Panel Layout */}
-        {appView === "edit" && editingChallan && (
+        {appView === "edit" && editingChallan && editingSource !== "voice" && (
           <div className="flex-1 grid grid-cols-12 overflow-hidden" style={{ height: "calc(100vh - 57px)" }}>
-            {/* Left Panel: Stationary Challan Image + Raw OCR Text */}
+            {/* Left Panel: Document image viewer (upload mode only) */}
             {editingSource === "upload" && (
               <div className="col-span-5 h-full flex flex-col overflow-hidden border-r border-gray-200 bg-[#07080b]">
-                {/* Image viewer — takes remaining height */}
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <DocumentViewer
                     previewUrl={previewUrl || (editingPreview ? (editingPreview.startsWith("data:") ? editingPreview : `data:image/jpeg;base64,${editingPreview}`) : null)}
@@ -505,15 +533,13 @@ export default function Home() {
                     onSelectRegion={setActiveRegion}
                   />
                 </div>
-
-            {/* Raw extracted text field removed as per user request */}
-            </div>
+              </div>
             )}
 
             {/* Right Panel: Editable Challan Form */}
             <div className={`${editingSource === "upload" ? "col-span-7" : "col-span-12"} h-full overflow-hidden`}>
               <ChallanEditPanel
-                key={editingId || "new"}
+                key={`${editingSource}-${editingId || "new"}`}
                 initialData={editingChallan}
                 onSave={handleSaveChallan}
                 onView={handleViewChallan}
@@ -522,6 +548,28 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {/* Voice mode: flex layout — VoiceAssistantPanel self-manages its width (collapsed/expanded) */}
+        {appView === "edit" && editingChallan && editingSource === "voice" && (
+          <div className="flex-1 flex overflow-hidden" style={{ height: "calc(100vh - 57px)" }}>
+            <VoiceAssistantPanel
+              currentData={liveChallanData || editingChallan}
+              onApplyUpdates={(updates) => setIncomingUpdates({ ...updates })}
+            />
+            <div className="flex-1 min-w-0 h-full overflow-hidden">
+              <ChallanEditPanel
+                key={editingId || "new"}
+                initialData={editingChallan}
+                onSave={handleSaveChallan}
+                onView={handleViewChallan}
+                onCancel={handleBackToDashboard}
+                incomingUpdates={incomingUpdates}
+                onDataChange={setLiveChallanData}
+              />
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* Print / View Modal */}
