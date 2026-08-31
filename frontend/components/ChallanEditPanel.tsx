@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Plus,
   Trash2,
@@ -18,6 +18,8 @@ import {
   Truck,
   Package,
   MessageSquare,
+  Bot,
+  Loader2,
 } from "lucide-react";
 import { ChallanData, ChallanItem } from "@/types/ocr";
 
@@ -26,6 +28,10 @@ interface ChallanEditPanelProps {
   onSave: (data: ChallanData) => void;
   onView: (data: ChallanData) => void;
   onCancel: () => void;
+  /** Optional: Partial update object pushed in from Voice/AI assistant. Changing the reference triggers a merge. */
+  incomingUpdates?: Partial<ChallanData> | null;
+  /** Optional: Called whenever local data changes, so parent can observe the latest state. */
+  onDataChange?: (data: ChallanData) => void;
 }
 
 const UNIT_OPTIONS = ["NOS", "MT", "KG", "PCS", "SET", "BOX", "M", "M2", "M3", "LTR", "TON"];
@@ -87,7 +93,7 @@ function buildEWayJSON(data: ChallanData): object {
   };
 }
 
-export function ChallanEditPanel({ initialData, onSave, onView, onCancel }: ChallanEditPanelProps) {
+export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomingUpdates, onDataChange }: ChallanEditPanelProps) {
   const [data, setData] = useState<ChallanData>(() => ({
     ...initialData,
     items:
@@ -100,6 +106,33 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel }: Chal
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState<string | null>(null);
   const [copiedExcel, setCopiedExcel] = useState(false);
+
+  // AI Assistant state
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiMessage, setAiMessage] = useState<{ type: "success" | "error" | "clarify"; text: string } | null>(null);
+  const aiInputRef = useRef<HTMLInputElement>(null);
+
+  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
+  // Merge incoming updates from Voice Assistant or AI
+  useEffect(() => {
+    if (!incomingUpdates) return;
+    setData((prev) => {
+      const updated = { ...prev };
+      (Object.keys(incomingUpdates) as (keyof ChallanData)[]).forEach((key) => {
+        if (incomingUpdates[key] !== undefined) {
+          (updated as any)[key] = incomingUpdates[key];
+        }
+      });
+      return updated;
+    });
+  }, [incomingUpdates]);
+
+  // Notify parent of data changes
+  useEffect(() => {
+    onDataChange?.(data);
+  }, [data, onDataChange]);
 
   const updateField = (field: keyof ChallanData, value: string) => {
     setData((prev) => ({ ...prev, [field]: value }));
@@ -162,6 +195,61 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel }: Chal
     } finally {
       setSending(false);
       setTimeout(() => setSendStatus(null), 4000);
+    }
+  };
+
+  const handleAiSubmit = async () => {
+    if (!aiInput.trim() || aiLoading) return;
+    setAiLoading(true);
+    setAiMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append("instruction", aiInput.trim());
+      formData.append("challan_state", JSON.stringify(data));
+
+      const res = await fetch(`${BACKEND_URL}/api/v1/assistant/text`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Unknown error" }));
+        setAiMessage({ type: "error", text: `Error: ${err.detail || "Request failed."}` });
+        return;
+      }
+
+      const result = await res.json();
+
+      if (result.clarification) {
+        setAiMessage({ type: "clarify", text: result.clarification });
+        return;
+      }
+
+      if (result.updates && Object.keys(result.updates).length > 0) {
+        setData((prev) => {
+          const updated = { ...prev };
+          (Object.keys(result.updates) as (keyof ChallanData)[]).forEach((key) => {
+            if (result.updates[key] !== undefined) {
+              (updated as any)[key] = result.updates[key];
+            }
+          });
+          return updated;
+        });
+        const fields = Object.keys(result.updates).filter((k) => k !== "items").join(", ");
+        const hasItems = result.updates.items !== undefined;
+        const parts = [];
+        if (fields) parts.push(fields);
+        if (hasItems) parts.push("items");
+        setAiMessage({ type: "success", text: `✓ Updated: ${parts.join(", ")}.` });
+        setAiInput("");
+      } else {
+        setAiMessage({ type: "clarify", text: "I didn't find a recognizable instruction. Could you rephrase?" });
+      }
+    } catch {
+      setAiMessage({ type: "error", text: "⚠️ Could not reach the server. Please check the backend is running." });
+    } finally {
+      setAiLoading(false);
+      setTimeout(() => setAiMessage(null), 6000);
     }
   };
 
@@ -508,6 +596,54 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel }: Chal
               <div className="mt-2 p-3 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-700">
                 <p className="font-semibold mb-1 text-[10px] uppercase tracking-wider">Extra Fields (from OCR):</p>
                 <pre className="whitespace-pre-wrap font-mono text-[11px]">{data.extraFields}</pre>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── AI Assistant ─────────────────────────────────────────────── */}
+        <div className="bg-white rounded-xl border border-indigo-200 overflow-hidden shadow-sm">
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 border-b border-indigo-100">
+            <Bot className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-widest">
+              AI Assistant
+            </span>
+            <span className="ml-auto text-[10px] text-indigo-400">Natural language updates</span>
+          </div>
+          <div className="p-4">
+            <p className="text-[11px] text-gray-500 mb-2">
+              Type an instruction to update challan fields (e.g. &quot;Change quantity to 25&quot; or &quot;Update customer name to Amit Kumar&quot;).
+            </p>
+            <div className="flex gap-2">
+              <input
+                ref={aiInputRef}
+                type="text"
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !aiLoading) handleAiSubmit(); }}
+                placeholder="e.g. Change the rate of cement to 500…"
+                className="flex-1 px-3 py-2 text-xs border border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-300 transition-all"
+                disabled={aiLoading}
+              />
+              <button
+                type="button"
+                onClick={handleAiSubmit}
+                disabled={aiLoading || !aiInput.trim()}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                {aiLoading ? "…" : "Send"}
+              </button>
+            </div>
+            {aiMessage && (
+              <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-medium ${
+                aiMessage.type === "success"
+                  ? "bg-green-50 text-green-700 border border-green-200"
+                  : aiMessage.type === "clarify"
+                  ? "bg-amber-50 text-amber-700 border border-amber-200"
+                  : "bg-red-50 text-red-700 border border-red-200"
+              }`}>
+                {aiMessage.text}
               </div>
             )}
           </div>

@@ -91,16 +91,19 @@ class VLMService:
         if "gemini" in normalized_model:
             return self._call_gemini(cropped_image, prompt, region_id)
         else:
-            return self._call_openai(cropped_image, prompt, region_id)
+            return self._call_openai(cropped_image, prompt, region_id, is_table=is_table)
 
-    def _call_openai(self, image: Image.Image, prompt: str, region_id: str) -> Tuple[str, bool]:
+    def _call_openai(self, image: Image.Image, prompt: str, region_id: str, is_table: bool = False) -> Tuple[str, bool]:
         if not self.openai_client:
             return f"Section #{region_id} OCR content (OpenAI key not configured)", False
 
         t0 = time.perf_counter()
         b64 = self._image_to_base64_jpeg(image)
-        
+
+        # Use gpt-4o as primary for high-quality OCR; fall back to gpt-4o-mini
         models_to_try = ["gpt-4o", "gpt-4o-mini"]
+        # For tables, we need higher token capacity to capture all rows
+        max_tokens = 4096 if is_table else 2000
 
         for model in models_to_try:
             try:
@@ -121,7 +124,8 @@ class VLMService:
                             ]
                         }
                     ],
-                    "max_tokens": 2000
+                    "max_tokens": max_tokens,
+                    "temperature": 0.0,
                 }
                 
                 response = self.openai_client.chat.completions.create(**call_kwargs)
@@ -212,7 +216,13 @@ class VLMService:
 
         prompt = (
             "You are an enterprise document parsing engine powered by GPT-5.\n"
-            "Analyze the provided document text (and attached image) from an industrial invoice/challan.\n"
+            "Analyze the provided document text (and attached image) from an industrial invoice/challan.\n\n"
+            "CRITICAL OCR CORRECTION RULES (apply before extraction):\n"
+            "A. CHARACTER CONFUSION: Common OCR errors to correct: '0' vs 'O', '1' vs 'I'/'l', '5' vs 'S', '8' vs 'B', '6' vs 'G'. Apply context: GSTINs are alphanumeric; challan numbers have slashes; vehicle numbers have letters and digits.\n"
+            "B. NUMBER VALIDATION: All monetary values (totalValueInclTax, taxableAmount, totInvValue) must be numeric strings (e.g. '734782'). Strip commas, 'Rs', '=VD', 'Rs.' prefixes. Weights must be decimal strings (e.g. '0.040'). If a number looks garbled, try to infer the correct value from context.\n"
+            "C. DATE NORMALIZATION: Dates must be in DD/MM/YYYY format. Convert partial dates (e.g. '28/8/26' → '28/08/2026', '28-8-2026' → '28/08/2026').\n"
+            "D. GSTIN VALIDATION: GSTINs are exactly 15 characters in format: 2 digits + 5 uppercase letters + 4 digits + 1 uppercase letter + 1 alphanumeric + 'Z' + 1 alphanumeric. Correct obvious OCR errors in GSTINs (e.g. 'O' → '0' in numeric positions).\n"
+            "E. FIELD ASSIGNMENT: Only put values in the field where they semantically belong. Never put the fromGstin value in toGstin or vice versa. The 'from' party is the supplier (TRIDENT FABRICATORS); the 'to' party is the consignee/recipient.\n\n"
             "CRITICAL INSTRUCTIONS FOR TABLE EXTRACTION:\n"
             "1. DITTO MARKS RESOLUTION: In the 'Item No' or 'HSN' column, writers use '\"' (ditto) to repeat the previous row's HSN code. DO NOT output '\"'. Forward-inherit the exact previous HSN code (e.g. if item 1 is 72083740 and items 2-5 have '\"', all items 1 to 5 MUST have hsnCode '72083740').\n"
             "2. MULTI-ROW BRACKETS: Writers group multiple rows with curly brackets '}' to show subtotals. Extract EVERY SINGLE line item (e.g. items 1 to 11).\n"
@@ -226,6 +236,7 @@ class VLMService:
             "10. CONSIGNEE: Extract partyName (recipient/consignee company name) and address (recipient full address).\n"
             "11. REMARKS/NOTES: Text such as 'Material assigned to [Company Name]', 'issued to...', 'on job work basis', 'returnable basis', 'Not for sale' must go into the 'remarks' field (NOT extraFields).\n"
             "12. TOTAL VALUE INCL TAX: Extract totalValueInclTax (total value including all taxes shown on the challan).\n"
+            "13. MISSING FIELDS: If a field is not visible in the document, output an empty string ''. NEVER invent or guess values for fields not present in the document.\n"
             "Return ONLY valid JSON matching this schema:\n"
             "{\n"
             ' "supplyType": "O",\n'
@@ -309,13 +320,14 @@ class VLMService:
         parsed_result = None
 
         if self.openai_client and "gemini" not in normalized_model:
+            # gpt-4o is the GPT-5 class model; gpt-4o-mini as fallback
             models_to_try = ["gpt-4o", "gpt-4o-mini"]
 
             for model in models_to_try:
                 # Try with response_format first, then without if output is truncated
                 for attempt_kwargs in [
-                    {"model": model, "response_format": {"type": "json_object"}, "max_tokens": 8192},
-                    {"model": model, "max_tokens": 8192},
+                    {"model": model, "response_format": {"type": "json_object"}, "max_tokens": 8192, "temperature": 0.0},
+                    {"model": model, "max_tokens": 8192, "temperature": 0.0},
                 ]:
                     try:
                         messages_content = [{"type": "text", "text": prompt}]
@@ -415,10 +427,11 @@ class VLMService:
                     f"Text to analyse:\n{combined}"
                 )
                 vr = self.openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="gpt-4o",
                     messages=[{"role": "user", "content": verify_prompt}],
                     response_format={"type": "json_object"},
                     max_tokens=512,
+                    temperature=0.0,
                     timeout=30,
                 )
                 vj = json.loads(vr.choices[0].message.content.strip())
