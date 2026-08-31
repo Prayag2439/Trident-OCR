@@ -156,6 +156,8 @@ export default function Home() {
   const [challans, setChallans] = useState<SavedChallan[]>([]);
   const [editingChallan, setEditingChallan] = useState<ChallanData | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingSource, setEditingSource] = useState<"manual" | "upload" | null>(null);
+  const [editingPreview, setEditingPreview] = useState<string | null>(null);
   const [printData, setPrintData] = useState<ChallanData | null>(null);
   const [rawTextCopied, setRawTextCopied] = useState(false);
 
@@ -199,9 +201,11 @@ export default function Home() {
       const mapped = mapOCRtoChallan(result.structured_invoice_data, result.document_meta.filename);
       setEditingChallan(mapped);
       setEditingId(null); // new challan (not editing existing)
+      setEditingSource("upload");
+      setEditingPreview(result.document_meta.preview_image_base64 || null);
       setAppView("edit");
     }
-  }, [result]);
+  }, [result, appView]);
 
   // Sync loading state
   useEffect(() => {
@@ -233,7 +237,8 @@ export default function Home() {
           const newChallan: SavedChallan = {
             id: `challan_${Date.now()}`,
             savedAt: new Date().toISOString(),
-            previewImageBase64: result?.document_meta?.preview_image_base64,
+            previewImageBase64: editingPreview || result?.document_meta?.preview_image_base64 || undefined,
+            source: editingSource || "manual",
             data,
           };
           updated = [newChallan, ...prev];
@@ -246,14 +251,18 @@ export default function Home() {
       reset();
       setEditingChallan(null);
       setEditingId(null);
+      setEditingSource(null);
+      setEditingPreview(null);
       setAppView("dashboard");
     },
-    [editingId, reset, result]
+    [editingId, editingSource, editingPreview, reset, result]
   );
 
   const handleEditFromDashboard = useCallback((challan: SavedChallan) => {
     setEditingChallan(challan.data);
     setEditingId(challan.id);
+    setEditingSource(challan.source || "manual");
+    setEditingPreview(challan.previewImageBase64 || null);
     setAppView("edit");
   }, []);
 
@@ -269,6 +278,8 @@ export default function Home() {
     reset();
     setEditingChallan(null);
     setEditingId(null);
+    setEditingSource(null);
+    setEditingPreview(null);
     setAppView("dashboard");
   }, [reset]);
 
@@ -276,6 +287,8 @@ export default function Home() {
     reset();
     setEditingChallan(emptyChalllanData());
     setEditingId(null);
+    setEditingSource("manual");
+    setEditingPreview(null);
     setAppView("edit");
   }, [reset, emptyChalllanData]);
 
@@ -297,7 +310,7 @@ export default function Home() {
               className="object-contain"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#1a237e]/10 text-[#1a237e] border border-[#1a237e]/20 uppercase tracking-wide">
+            <span className="text-sm font-bold px-3 py-1 rounded bg-[#1a237e]/10 text-[#1a237e] border border-[#1a237e]/20 uppercase tracking-wide">
               Challan &amp; Despatch
             </span>
           </div>
@@ -315,26 +328,23 @@ export default function Home() {
               </button>
             )}
 
-            {appView === "edit" && (
+            {/* {appView === "edit" && (
               <ModelToggle
                 selectedModel={selectedModel}
                 onSelectModel={setSelectedModel}
                 disabled={loading}
               />
-            )}
+            )} */}
 
-            {appView === "upload" && (
+            {/* {appView === "upload" && (
               <ModelToggle
                 selectedModel={selectedModel}
                 onSelectModel={setSelectedModel}
                 disabled={loading}
               />
-            )}
+            )} */}
 
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Backend Ready</span>
-            </div>
+            {/* Backend Ready field removed as per user request */}
           </div>
         </div>
       </header>
@@ -385,7 +395,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => { const input = document.getElementById('upload-file-input') as HTMLInputElement; input?.click(); }}
-                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-gray-700 text-white hover:bg-gray-800 transition-colors"
+                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-[#1a237e] text-white hover:bg-[#283593] transition-colors"
                   >
                     <span className="text-gray-400 text-[10px]">1.</span> Choose file
                   </button>
@@ -457,37 +467,24 @@ export default function Home() {
 
         {/* VIEW: Loading / Processing */}
         {appView === "loading" && loading && (
-          <div className="flex-1 flex items-center justify-center bg-gray-50 p-8">
-            <div className="w-full max-w-lg p-8 rounded-2xl bg-white border border-gray-200 shadow-xl text-center">
-              <div className="w-12 h-12 rounded-2xl bg-gray-900 flex items-center justify-center mx-auto mb-4">
-                <Sparkles className="w-6 h-6 text-white animate-pulse" />
+          <div className="flex-1 flex items-center justify-center bg-[#f0f2f5] p-8">
+            <div className="w-full max-w-sm p-8 rounded-2xl bg-white border border-gray-200 shadow-xl text-center flex flex-col items-center">
+              <div className="relative mb-6">
+                <div className="absolute inset-0 rounded-full border-4 border-[#1a237e]/20" />
+                <div className="absolute inset-0 rounded-full border-4 border-[#1a237e] border-t-transparent animate-spin" />
+                <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center p-4">
+                  <img
+                    src="/trident-logo.png"
+                    alt="Trident Logo"
+                    className="w-full h-auto object-contain animate-pulse"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                </div>
               </div>
-              <h3 className="text-base font-bold text-gray-900 mb-1">Processing Challan</h3>
-              <p className="text-xs text-gray-500 mb-6">
-                Running OCR pipeline and extracting structured data…
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Processing Document</h3>
+              <p className="text-sm text-gray-500">
+                Please wait while we extract data from your challan...
               </p>
-
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: "Phase 1: Triage", sub: "PyMuPDF Text Layer", active: stage === "triage", done: ["layout", "vlm", "complete"].includes(stage) },
-                  { label: "Phase 2: Layout", sub: "YOLOv8 DocLayNet", active: stage === "layout", done: ["vlm", "complete"].includes(stage) },
-                  { label: "Phase 3: VLM OCR", sub: selectedModel === "gpt-5" ? "GPT-4o Vision" : "Gemini Vision", active: stage === "vlm", done: stage === "complete" },
-                ].map((phase) => (
-                  <div
-                    key={phase.label}
-                    className={`p-3 rounded-xl border text-center transition-all ${
-                      phase.active
-                        ? "bg-blue-50 border-blue-300 text-blue-700"
-                        : phase.done
-                        ? "bg-green-50 border-green-300 text-green-700"
-                        : "bg-gray-50 border-gray-200 text-gray-400"
-                    }`}
-                  >
-                    <div className="text-xs font-bold mb-0.5">{phase.label}</div>
-                    <div className="text-[10px]">{phase.sub}</div>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         )}
@@ -496,70 +493,25 @@ export default function Home() {
         {appView === "edit" && editingChallan && (
           <div className="flex-1 grid grid-cols-12 overflow-hidden" style={{ height: "calc(100vh - 57px)" }}>
             {/* Left Panel: Stationary Challan Image + Raw OCR Text */}
-            <div className="col-span-5 h-full flex flex-col overflow-hidden border-r border-gray-200 bg-[#07080b]">
-              {/* Image viewer — takes remaining height */}
-              <div className="flex-1 min-h-0 overflow-hidden">
-                {(previewUrl || result?.document_meta?.preview_image_base64) ? (
+            {editingSource === "upload" && (
+              <div className="col-span-5 h-full flex flex-col overflow-hidden border-r border-gray-200 bg-[#07080b]">
+                {/* Image viewer — takes remaining height */}
+                <div className="flex-1 min-h-0 overflow-hidden">
                   <DocumentViewer
-                    previewUrl={previewUrl}
+                    previewUrl={previewUrl || (editingPreview ? (editingPreview.startsWith("data:") ? editingPreview : `data:image/jpeg;base64,${editingPreview}`) : null)}
                     meta={result?.document_meta || null}
                     regions={result?.extracted_regions || []}
                     activeRegion={activeRegion}
                     onSelectRegion={setActiveRegion}
                   />
-                ) : (
-                  /* Editing from dashboard (no image available) */
-                  <div className="h-full flex items-center justify-center text-center p-8">
-                    <div>
-                      <div className="w-16 h-16 rounded-2xl bg-gray-800 flex items-center justify-center mx-auto mb-4">
-                        <FileText className="w-8 h-8 text-gray-500" />
-                      </div>
-                      <p className="text-sm font-medium text-gray-500">Challan Image</p>
-                      <p className="text-xs text-gray-600 mt-1">
-                        Original image not available for this saved challan.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
 
-              {/* Raw OCR Text Panel */}
-              {result?.extracted_regions && result.extracted_regions.length > 0 && (() => {
-                const rawText = [...result.extracted_regions]
-                  .sort((a, b) => a.reading_order_index - b.reading_order_index)
-                  .map(r => r.text_content)
-                  .filter(Boolean)
-                  .join('\n\n');
-                if (!rawText.trim()) return null;
-                return (
-                  <div className="flex-shrink-0 border-t border-gray-800" style={{ height: '220px' }}>
-                    <div className="flex items-center justify-between px-3 py-1.5 bg-[#0f1118] border-b border-gray-800">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                        Raw Extracted Text
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(rawText);
-                          setRawTextCopied(true);
-                          setTimeout(() => setRawTextCopied(false), 2000);
-                        }}
-                        className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors"
-                      >
-                        {rawTextCopied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-                        {rawTextCopied ? 'Copied!' : 'Copy'}
-                      </button>
-                    </div>
-                    <div className="h-full overflow-y-auto p-3" style={{ height: 'calc(220px - 32px)' }}>
-                      <pre className="text-[10px] text-gray-300 font-mono whitespace-pre-wrap leading-relaxed">{rawText}</pre>
-                    </div>
-                  </div>
-                );
-              })()}
+            {/* Raw extracted text field removed as per user request */}
             </div>
+            )}
 
             {/* Right Panel: Editable Challan Form */}
-            <div className="col-span-7 h-full overflow-hidden">
+            <div className={`${editingSource === "upload" ? "col-span-7" : "col-span-12"} h-full overflow-hidden`}>
               <ChallanEditPanel
                 key={editingId || "new"}
                 initialData={editingChallan}

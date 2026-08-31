@@ -15,6 +15,9 @@ yarn-error.log
 out/
 build/
 
+# Zip files
+*.zip
+
 # Mac
 .DS_Store
 

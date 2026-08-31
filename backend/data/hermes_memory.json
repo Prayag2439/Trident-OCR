@@ -41,62 +41,8 @@
       }
     }
   },
-  "documents_processed": 26,
+  "documents_processed": 35,
   "patterns_evolved": [
-    {
-      "timestamp": "2026-08-27 23:05:55",
-      "items_standardized": 0,
-      "extra_fields_mapped": true,
-      "extra_fields_2_mapped": true
-    },
-    {
-      "timestamp": "2026-08-27 23:07:05",
-      "items_standardized": 11,
-      "extra_fields_mapped": true,
-      "extra_fields_2_mapped": true
-    },
-    {
-      "timestamp": "2026-08-27 23:11:30",
-      "items_standardized": 11,
-      "extra_fields_mapped": true,
-      "extra_fields_2_mapped": true
-    },
-    {
-      "timestamp": "2026-08-27 23:21:11",
-      "items_standardized": 0,
-      "extra_fields_mapped": true,
-      "extra_fields_2_mapped": true
-    },
-    {
-      "timestamp": "2026-08-27 23:29:50",
-      "items_standardized": 0,
-      "extra_fields_mapped": true,
-      "extra_fields_2_mapped": true
-    },
-    {
-      "timestamp": "2026-08-27 23:45:40",
-      "items_standardized": 0,
-      "extra_fields_mapped": true,
-      "extra_fields_2_mapped": true
-    },
-    {
-      "timestamp": "2026-08-27 23:49:26",
-      "items_standardized": 0,
-      "extra_fields_mapped": true,
-      "extra_fields_2_mapped": true
-    },
-    {
-      "timestamp": "2026-08-27 23:51:13",
-      "items_standardized": 0,
-      "extra_fields_mapped": true,
-      "extra_fields_2_mapped": true
-    },
-    {
-      "timestamp": "2026-08-28 10:43:29",
-      "items_standardized": 0,
-      "extra_fields_mapped": true,
-      "extra_fields_2_mapped": true
-    },
     {
       "timestamp": "2026-08-28 10:49:54",
       "items_standardized": 0,
@@ -159,6 +105,60 @@
     },
     {
       "timestamp": "2026-08-28 15:13:44",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 18:18:12",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 18:27:55",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 18:39:34",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 19:45:37",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 19:54:15",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 20:14:50",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 21:13:21",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 22:58:23",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-28 23:03:35",
       "items_standardized": 11,
       "extra_fields_mapped": true,
       "extra_fields_2_mapped": true

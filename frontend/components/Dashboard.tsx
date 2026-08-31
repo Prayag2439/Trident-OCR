@@ -22,6 +22,9 @@ import {
   Package,
   X,
   FileSpreadsheet,
+  Settings,
+  Search,
+  AlertCircle,
 } from "lucide-react";
 import { SavedChallan, ChallanData } from "@/types/ocr";
 
@@ -37,10 +40,67 @@ interface DashboardProps {
 interface JSONModalProps {
   data: object;
   challanNo: string;
+  apiConfig: { endpoint: string; token: string };
   onClose: () => void;
 }
 
-function JSONModal({ data, challanNo, onClose }: JSONModalProps) {
+function SettingsModal({ apiConfig, onClose, onSave }: { apiConfig: any; onClose: () => void; onSave: (cfg: any) => void }) {
+  const [endpoint, setEndpoint] = useState(apiConfig.endpoint || "");
+  const [token, setToken] = useState(apiConfig.token || "");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-gray-50 rounded-t-2xl">
+          <h3 className="text-sm font-bold text-gray-900">E-Way Bill API setup</h3>
+          <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-200 transition-colors">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs leading-relaxed">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>
+              Point this at your own GSP (GST Suvidha Provider) or middleware endpoint that handles NIC
+              authentication. This console never sends your credentials anywhere except your own browser's
+              local storage for this app.
+            </span>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">API endpoint URL</label>
+            <input
+              type="text"
+              value={endpoint}
+              onChange={(e) => setEndpoint(e.target.value)}
+              placeholder="https://your-gsp-middleware.example.com/ewb/generate"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">Auth token / API key (optional)</label>
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="Bearer token"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors">
+            Cancel
+          </button>
+          <button type="button" onClick={() => onSave({ endpoint, token })} className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold rounded-lg bg-[#1a237e] text-white hover:bg-[#283593] transition-colors shadow">
+            <Check className="w-3.5 h-3.5" /> Save settings
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JSONModal({ data, challanNo, apiConfig, onClose }: JSONModalProps) {
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState<string | null>(null);
@@ -56,11 +116,24 @@ function JSONModal({ data, challanNo, onClose }: JSONModalProps) {
   const handleSend = async () => {
     setSending(true);
     setSendStatus(null);
+    if (!apiConfig.endpoint) {
+      setSendStatus("✗ No API endpoint configured. Add it in E-Way Bill setup.");
+      setSending(false);
+      return;
+    }
     try {
-      setSendStatus("✓ JSON payload ready. No external API configured — copied to clipboard.");
-      navigator.clipboard.writeText(jsonStr);
+      const res = await fetch(apiConfig.endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(apiConfig.token ? { Authorization: "Bearer " + apiConfig.token } : {}) },
+        body: jsonStr,
+      });
+      if (res.ok) {
+        setSendStatus("✓ Sent to E-Way Bill system.");
+      } else {
+        setSendStatus("✗ Request failed (CORS or auth issue).");
+      }
     } catch {
-      setSendStatus("✗ Failed.");
+      setSendStatus("✗ Failed to connect to endpoint.");
     } finally {
       setSending(false);
       setTimeout(() => setSendStatus(null), 4000);
@@ -83,7 +156,7 @@ function JSONModal({ data, challanNo, onClose }: JSONModalProps) {
           <div className="rounded-lg bg-gray-900 border border-gray-700 p-4 max-h-96 overflow-y-auto mb-3">
             <pre className="text-xs text-emerald-400 font-mono whitespace-pre-wrap leading-relaxed">{jsonStr}</pre>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={handleCopy}
@@ -236,8 +309,36 @@ function exportChallanCSV(data: ChallanData): void {
 }
 
 export function Dashboard({ challans, onUpload, onNewChallan, onEdit, onView, onDelete }: DashboardProps) {
+  const [searchQuery, setSearchQuery] = useState("");
   const [jsonModal, setJsonModal] = useState<{ data: object; challanNo: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [apiConfig, setApiConfig] = useState<{ endpoint: string; token: string }>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return JSON.parse(localStorage.getItem("eway_api_config") || '{"endpoint":"","token":""}');
+      } catch {
+        return { endpoint: "", token: "" };
+      }
+    }
+    return { endpoint: "", token: "" };
+  });
+
+  const saveApiConfig = (cfg: { endpoint: string; token: string }) => {
+    setApiConfig(cfg);
+    localStorage.setItem("eway_api_config", JSON.stringify(cfg));
+    setSettingsOpen(false);
+  };
+
+  const filteredChallans = challans.filter((c) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      (c.data.challanNo || "").toLowerCase().includes(q) ||
+      (c.data.partyName || "").toLowerCase().includes(q) ||
+      (c.data.gstin || "").toLowerCase().includes(q) ||
+      (c.data.vehicleNo || "").toLowerCase().includes(q)
+    );
+  });
 
   const handleShowJSON = (challan: SavedChallan) => {
     setJsonModal({ data: buildEWayJSON(challan.data), challanNo: challan.data.challanNo });
@@ -257,37 +358,37 @@ export function Dashboard({ challans, onUpload, onNewChallan, onEdit, onView, on
   return (
     <div className="min-h-screen bg-white font-sans">
       {/* Dashboard Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-black text-gray-900 tracking-tight">
-            CHALLAN & DESPATCH CONSOLE
-          </h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {challans.length} challan{challans.length !== 1 ? "s" : ""} saved
-          </p>
-        </div>
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-end">
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onNewChallan}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-gray-900 text-gray-900 text-sm font-bold hover:bg-gray-50 transition-colors"
+            onClick={() => setSettingsOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-md border border-[#1a237e] text-[#1a237e] text-sm font-bold hover:bg-[#1a237e]/10 transition-colors bg-white"
           >
-            <Plus className="w-4 h-4" />
-            New Challan
+            <Settings className="w-4 h-4" />
+            E-Way Bill setup
           </button>
           <button
             type="button"
             onClick={onUpload}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-700 transition-colors shadow-md"
+            className="flex items-center gap-2 px-4 py-2 rounded-md border border-[#1a237e] text-[#1a237e] text-sm font-bold hover:bg-[#1a237e]/10 transition-colors bg-white"
           >
             <Upload className="w-4 h-4" />
-            Upload Challan
+            Upload challan
+          </button>
+          <button
+            type="button"
+            onClick={onNewChallan}
+            className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#1a237e] text-white text-sm font-bold hover:bg-[#283593] transition-colors shadow-md"
+          >
+            <Plus className="w-4 h-4" />
+            New challan
           </button>
         </div>
       </div>
 
       {/* Content */}
-      <div className="max-w-6xl mx-auto px-6 py-6">
+      <div className="max-w-screen-2xl mx-auto px-6 py-6">
         {challans.length === 0 ? (
           /* Empty State */
           <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -301,126 +402,149 @@ export function Dashboard({ challans, onUpload, onNewChallan, onEdit, onView, on
             <button
               type="button"
               onClick={onUpload}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gray-900 text-white text-sm font-bold hover:bg-gray-700 transition-colors shadow-md"
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#1a237e] text-white text-sm font-bold hover:bg-[#283593] transition-colors shadow-md"
             >
               <Plus className="w-4 h-4" />
               Upload First Challan
             </button>
           </div>
         ) : (
-          /* Challan List */
-          <div className="space-y-3">
-            <AnimatePresence>
-              {challans.map((challan) => (
-                <motion.div
-                  key={challan.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-gray-300 transition-all overflow-hidden"
-                >
-                  <div className="flex items-center justify-between px-5 py-4">
-                    {/* Left: Challan Info */}
-                    <div className="flex items-center gap-5">
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0">
-                        <FileText className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-black text-gray-900 tracking-tight">
-                            {challan.data.challanNo || "Untitled Challan"}
-                          </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 uppercase tracking-wide border border-gray-200">
-                            {challan.data.items.length} items
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="flex items-center gap-1 text-xs text-gray-500">
-                            <Calendar className="w-3 h-3" />
-                            {challan.data.date}
-                          </span>
-                          <span className="flex items-center gap-1 text-xs text-gray-500">
-                            <Building2 className="w-3 h-3" />
-                            {challan.data.partyName}
-                          </span>
-                          <span className="flex items-center gap-1 text-xs text-gray-500">
-                            <Truck className="w-3 h-3" />
-                            {challan.data.vehicleNo || "—"}
-                          </span>
-                          <span className="flex items-center gap-1 text-xs text-gray-500">
-                            <Package className="w-3 h-3" />
-                            {challan.data.computedWeightMT || challan.data.totalWeightOverride || "—"} MT
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+          /* Challan List & Search */
+          <div className="space-y-4">
+            {/* Search Bar and Badge Row */}
+            <div className="flex items-center gap-4">
+              <div className="flex-1 relative">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search by challan no, party, GSTIN or vehicle no"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-shadow"
+                />
+              </div>
+              <div className="px-4 py-2 rounded-md bg-[#1a237e] text-white text-sm font-bold shadow-md shadow-[#1a237e]/20 flex-shrink-0">
+                {filteredChallans.length} challan{filteredChallans.length !== 1 ? 's' : ''}
+              </div>
+            </div>
 
-                    {/* Right: Actions */}
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => onEdit(challan)}
-                        className="dashboard-action-btn text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100"
-                        title="Edit"
+            <div className="bg-white border border-gray-200 rounded-md overflow-hidden shadow-sm">
+              <table className="w-full text-left text-xs text-gray-700">
+                <thead className="bg-[#f8fafc] border-b border-gray-200 text-gray-500 font-bold tracking-widest uppercase text-[10px]">
+                  <tr>
+                    <th className="px-4 py-3 font-bold">CHALLAN NO.</th>
+                    <th className="px-4 py-3 font-bold">DATE</th>
+                    <th className="px-4 py-3 font-bold">CONSIGNEE</th>
+                    <th className="px-4 py-3 font-bold">VEHICLE</th>
+                    <th className="px-4 py-3 font-bold">WEIGHT (MT)</th>
+                    <th className="px-4 py-3 font-bold text-center">STATUS</th>
+                    <th className="px-4 py-3 font-bold text-right">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  <AnimatePresence>
+                    {filteredChallans.map((challan) => (
+                      <motion.tr
+                        key={challan.id}
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="hover:bg-[#f8fafc] transition-colors"
                       >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>Edit</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onView(challan.data)}
-                        className="dashboard-action-btn text-gray-600 border-gray-200 bg-gray-50 hover:bg-gray-100"
-                        title="View"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>View</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onView(challan.data)}
-                        className="dashboard-action-btn text-purple-600 border-purple-200 bg-purple-50 hover:bg-purple-100"
-                        title="Print / PDF"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>Print</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleShowJSON(challan)}
-                        className="dashboard-action-btn text-emerald-600 border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
-                        title="JSON"
-                      >
-                        <Code2 className="w-3.5 h-3.5" />
-                        <span>JSON</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => exportChallanCSV(challan.data)}
-                        className="dashboard-action-btn text-green-600 border-green-200 bg-green-50 hover:bg-green-100"
-                        title="Export Excel/CSV"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5" />
-                        <span>Excel</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteConfirm(challan.id)}
-                        className="dashboard-action-btn text-red-500 border-red-200 bg-red-50 hover:bg-red-100"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Delete</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Saved-at timestamp */}
-                  <div className="px-5 pb-2 text-[10px] text-gray-400">
-                    Saved {new Date(challan.savedAt).toLocaleString()}
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="inline-flex items-center px-2 py-1 rounded bg-[#1a237e] text-white text-[10px] font-semibold tracking-wide shadow-sm">
+                            {challan.data.challanNo || "UNTITLED"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">
+                          {challan.data.date}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="font-semibold text-gray-900">{challan.data.partyName}</div>
+                          <div className="text-[10px] text-gray-400 mt-0.5">{challan.data.gstin || "—"}</div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-600">
+                          {challan.data.vehicleNo || "—"}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">
+                          {challan.data.computedWeightMT || challan.data.totalWeightOverride || "0.000"}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-center">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-orange-50 text-orange-600 text-[10px] font-bold">
+                            ⚠️ Not sent
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => onEdit(challan)}
+                              className="dashboard-action-btn text-blue-600 bg-blue-50 hover:bg-blue-100"
+                              title="Edit"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onView(challan.data)}
+                              className="dashboard-action-btn text-gray-600 bg-gray-50 hover:bg-gray-100"
+                              title="View"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>View</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onView(challan.data)}
+                              className="dashboard-action-btn text-purple-600 bg-purple-50 hover:bg-purple-100"
+                              title="Print / PDF"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>Print</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleShowJSON(challan)}
+                              className="dashboard-action-btn text-emerald-600 bg-emerald-50 hover:bg-emerald-100"
+                              title="JSON"
+                            >
+                              <Code2 className="w-3.5 h-3.5" />
+                              <span>JSON</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => exportChallanCSV(challan.data)}
+                              className="dashboard-action-btn text-green-600 bg-green-50 hover:bg-green-100"
+                              title="Export Excel/CSV"
+                            >
+                              <FileSpreadsheet className="w-3.5 h-3.5" />
+                              <span>Excel</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteConfirm(challan.id)}
+                              className="dashboard-action-btn text-red-500 bg-red-50 hover:bg-red-100"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      </motion.tr>
+                    ))}
+                    {filteredChallans.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
+                          No challans match your search.
+                        </td>
+                      </tr>
+                    )}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -430,7 +554,17 @@ export function Dashboard({ challans, onUpload, onNewChallan, onEdit, onView, on
         <JSONModal
           data={jsonModal.data}
           challanNo={jsonModal.challanNo}
+          apiConfig={apiConfig}
           onClose={() => setJsonModal(null)}
+        />
+      )}
+
+      {/* Settings Modal */}
+      {settingsOpen && (
+        <SettingsModal
+          apiConfig={apiConfig}
+          onClose={() => setSettingsOpen(false)}
+          onSave={saveApiConfig}
         />
       )}
 
@@ -473,12 +607,10 @@ export function Dashboard({ challans, onUpload, onNewChallan, onEdit, onView, on
           display: flex;
           align-items: center;
           gap: 4px;
-          padding: 5px 10px;
+          padding: 4px 10px;
           font-size: 11px;
           font-weight: 600;
-          border-radius: 6px;
-          border-width: 1px;
-          border-style: solid;
+          border-radius: 20px;
           transition: all 0.15s;
           white-space: nowrap;
         }

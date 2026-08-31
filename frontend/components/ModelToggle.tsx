@@ -42,7 +42,7 @@ export function ModelToggle({
           )}
         </button>
 
-        {/* Gemini 3 Button */}
+        {/* Gemini 3 Button commented out as per request
         <button
           type="button"
           onClick={() => onSelectModel("gemini")}
@@ -66,6 +66,7 @@ export function ModelToggle({
             />
           )}
         </button>
+        */}
       </div>
 
       {/* Model Contextual Helper Info */}

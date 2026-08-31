@@ -539,7 +539,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel }: Chal
             </div>
           )}
 
-          <div className="flex items-center gap-2 px-4 py-3">
+          <div className="flex items-center justify-end gap-2 px-4 py-3">
             <button
               type="button"
               onClick={handleCopyJSON}

@@ -39,7 +39,9 @@ export const DocumentViewer = memo(function DocumentViewer({
   const [copiedToast, setCopiedToast] = useState<string | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  const imgSrc = meta?.preview_image_base64 || previewUrl;
+  const imgSrc = meta?.preview_image_base64
+    ? (meta.preview_image_base64.startsWith("data:") ? meta.preview_image_base64 : `data:image/jpeg;base64,${meta.preview_image_base64}`)
+    : previewUrl;
 
   const handleImageLoad = () => {
     if (imgRef.current) {
