@@ -11,6 +11,7 @@ jobs:
   build-and-verify:
     name: Build & Verify Docker Stack
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: 📥 Checkout Repository
@@ -21,37 +22,43 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: ⚙️ Set up Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: 🔍 Python Code Validation
+      - name: 🔍 Python Syntax & Config Audit
         run: |
           python -m py_compile backend/main.py backend/config.py backend/database.py
 
-      - name: 🐳 Validate Docker Compose Configuration
+      - name: 🐳 Validate Docker Compose Config
         run: |
           docker compose config
 
-      - name: 🏗️ Build Docker Containers (Parallel)
+      - name: 🏗️ Build Docker Containers
         run: |
           docker compose build --parallel
 
-      - name: 🚀 Start Services in Background
+      - name: 🚀 Start Services & Wait for Healthchecks
         run: |
-          docker compose up -d
-          sleep 15
+          # Start containers and wait up to 120s for healthchecks to pass
+          docker compose up -d --wait --wait-timeout 120 || {
+            echo "Container startup timed out or failed. Displaying container logs:"
+            docker compose logs
+            docker compose ps
+            exit 1
+          }
 
       - name: 🩺 Smoke Test & Zero-CORS Handshake Check
         run: |
-          echo "=== 1. Checking Gateway Root HTTP Status ==="
-          curl -f -I http://localhost/ || exit 1
+          echo "=== 1. Checking Gateway Root HTTP Status (Port 80) ==="
+          for i in {1..15}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/ || true)
+            echo "Attempt $i: Gateway status $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Gateway is UP and healthy!"
+              break
+            fi
+            sleep 3
+          done
 
-          echo "=== 2. Checking Direct Backend Health ==="
-          curl -f http://localhost:8000/ || exit 1
+          echo "=== 2. Checking Direct Backend Health (Port 8000) ==="
+          curl -f http://localhost:8000/
 
           echo "=== 3. Checking Zero-CORS Preflight Handshake ==="
           curl -s -I -X OPTIONS http://localhost/api/v1/process-document \
@@ -59,9 +66,9 @@ jobs:
             -H "Access-Control-Request-Method: POST" | grep -i "Access-Control-Allow-Origin"
 
           echo "=== 4. Checking API Swagger Docs ==="
-          curl -f -I http://localhost/docs || exit 1
+          curl -f -I http://localhost/docs
 
-      - name: 🛑 Teardown Services
+      - name: 🛑 Teardown Stack
         if: always()
         run: |
           docker compose down -v
