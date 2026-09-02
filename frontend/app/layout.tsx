@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "@/components/ToastProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -14,10 +15,22 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+export const viewport: Viewport = {
+  themeColor: "#1a237e",
+};
+
 export const metadata: Metadata = {
-  title: "Trident — Challan & Despatch Console",
-  description:
-    "Professional challan management: upload challan images, OCR extraction with GPT-4o/Gemini, edit and map data, save to dashboard, export to Excel/CSV, and generate E-Way Bill JSON.",
+  title: "Optimo Challan Console",
+  description: "Enterprise-grade challan and despatch document extraction pipeline.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Optimo Challan",
+  },
+  icons: {
+    apple: "/trident-logo.png",
+  },
 };
 
 export default function RootLayout({
@@ -28,9 +41,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="antialiased min-h-screen flex flex-col bg-white text-gray-900 font-sans">
-        {children}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );
 }
-

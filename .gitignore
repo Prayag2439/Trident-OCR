@@ -1,29 +1,75 @@
-# Environments
+# ==============================================================================
+# Trident Git Ignore Configuration
+# ==============================================================================
+
+# ── Environments & Secrets ──
 .env
-.venv/
-backend/.venv/
+.env.local
+.env.*.local
+.env.production
+.env.staging
+
+# ── Python & Virtual Environments ──
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+backend/.venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
-# Node
+# ── Node.js & Dependencies ──
 node_modules/
-npm-debug.log
-yarn-error.log
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Next.js
+# ── Next.js & TypeScript Build Cache ──
 .next/
+frontend/.next/
 out/
 build/
+dist/
+*.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
 
-# Zip files
+# ── Next-PWA Generated Service Worker Assets ──
+frontend/public/sw.js
+frontend/public/sw.js.map
+frontend/public/workbox-*.js
+frontend/public/workbox-*.js.map
+
+# ── Databases & Runtime State ──
+*.db
+*.sqlite
+*.sqlite3
+challans.db
+backend/challans.db
+
+# ── Heavy AI Model Weights & Checkpoints ──
+*.pt
+*.pth
+*.onnx
+*.bin
+yolov8x-doclaynet.pt
+yolov8*.pt
+
+# ── Archives & Compressed Files ──
 *.zip
+*.tar
+*.tar.gz
+*.rar
 
-# Mac
+# ── OS & IDE Artifacts ──
 .DS_Store
-
-# IDEs
+Thumbs.db
 .idea/
 .vscode/
-
-# Layout Models
-yolov8x-doclaynet.pt
+*.swp
+*.swo

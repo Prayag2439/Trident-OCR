@@ -41,14 +41,8 @@
       }
     }
   },
-  "documents_processed": 36,
+  "documents_processed": 37,
   "patterns_evolved": [
-    {
-      "timestamp": "2026-08-28 13:09:33",
-      "items_standardized": 0,
-      "extra_fields_mapped": true,
-      "extra_fields_2_mapped": true
-    },
     {
       "timestamp": "2026-08-28 13:18:51",
       "items_standardized": 11,
@@ -159,6 +153,12 @@
     },
     {
       "timestamp": "2026-08-31 12:41:44",
+      "items_standardized": 11,
+      "extra_fields_mapped": true,
+      "extra_fields_2_mapped": true
+    },
+    {
+      "timestamp": "2026-08-31 14:48:35",
       "items_standardized": 11,
       "extra_fields_mapped": true,
       "extra_fields_2_mapped": true

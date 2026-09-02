@@ -12,6 +12,7 @@ import {
   Upload,
   Copy,
   Check,
+  LogOut,
 } from "lucide-react";
 import { useOCRPipeline } from "@/hooks/useOCRPipeline";
 import { ModelToggle } from "@/components/ModelToggle";
@@ -134,25 +135,19 @@ function mapOCRtoChallan(
 // ─── Storage helpers ───────────────────────────────────────────────────────
 const STORAGE_KEY = "trident_challans_v1";
 
-function loadChallans(): SavedChallan[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveChallans(challans: SavedChallan[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(challans));
-  } catch {}
-}
+// We now use the backend SQLite database for persistence.
+// The frontend only interacts with the backend API.
+import { fetchChallans, createChallan, updateChallan, deleteChallan, migrateLegacyChallans } from "@/utils/api";
+import { useToast } from "@/components/ToastProvider";
+import { LoginScreen } from "@/components/LoginScreen";
 
 // ─── View states ───────────────────────────────────────────────────────────
 type AppView = "dashboard" | "upload" | "edit" | "loading";
 
 export default function Home() {
+  const { showAlert } = useToast();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [appView, setAppView] = useState<AppView>("dashboard");
   const [challans, setChallans] = useState<SavedChallan[]>([]);
   const [editingChallan, setEditingChallan] = useState<ChallanData | null>(null);
@@ -165,6 +160,15 @@ export default function Home() {
   const [incomingUpdates, setIncomingUpdates] = useState<Partial<ChallanData> | null>(null);
   // Tracks the current live challan data for voice panel context
   const [liveChallanData, setLiveChallanData] = useState<ChallanData | null>(null);
+
+  // Check auth on mount
+  useEffect(() => {
+    const token = localStorage.getItem("trident_auth_token");
+    if (token) {
+      setIsAuthenticated(true);
+    }
+    setAuthChecked(true);
+  }, []);
 
   // Empty ChallanData for "New Challan" (manual entry)
   const emptyChalllanData = useCallback((): ChallanData => ({
@@ -187,7 +191,7 @@ export default function Home() {
     setSelectedModel,
     loading,
     stage,
-    error,
+    error: ocrError,
     result,
     activeRegion,
     setActiveRegion,
@@ -195,10 +199,36 @@ export default function Home() {
     reset,
   } = useOCRPipeline();
 
-  // Load challans from localStorage on mount
+  const loadBackendChallans = useCallback(async () => {
+    try {
+      const data = await fetchChallans();
+      setChallans(data);
+    } catch (err) {
+      console.error("Failed to load challans from backend", err);
+      showAlert("Failed to load challans from database.", "error");
+    }
+  }, [showAlert]);
+
+  // Migrate from localStorage to SQLite on mount, then load
   useEffect(() => {
-    setChallans(loadChallans());
-  }, []);
+    const init = async () => {
+      try {
+        const legacy = localStorage.getItem(STORAGE_KEY);
+        if (legacy) {
+          const parsed = JSON.parse(legacy);
+          if (parsed && parsed.length > 0) {
+            await migrateLegacyChallans(parsed);
+            showAlert("Migrated existing challans to database.", "success");
+          }
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      } catch (err) {
+        console.error("Migration failed:", err);
+      }
+      loadBackendChallans();
+    };
+    init();
+  }, [loadBackendChallans, showAlert]);
 
   // When OCR result arrives, map it and switch to edit view
   useEffect(() => {
@@ -212,13 +242,21 @@ export default function Home() {
       setIncomingUpdates(null);
       setLiveChallanData(null);
       setAppView("edit");
+      showAlert("OCR extraction completed.", "success");
     }
-  }, [result, appView]);
+  }, [result, appView, showAlert]);
 
-  // Sync loading state
+  // Sync loading state and errors
   useEffect(() => {
     if (loading) setAppView("loading");
   }, [loading]);
+
+  useEffect(() => {
+    if (ocrError) {
+      showAlert(`OCR extraction failed: ${ocrError}`, "error");
+      setAppView("dashboard");
+    }
+  }, [ocrError, showAlert]);
 
   const handleUploadFile = useCallback(
     (f: File) => {
@@ -231,17 +269,19 @@ export default function Home() {
   );
 
   const handleSaveChallan = useCallback(
-    (data: ChallanData) => {
-      setChallans((prev) => {
-        let updated: SavedChallan[];
-
+    async (data: ChallanData) => {
+      try {
         if (editingId) {
           // Update existing challan
-          updated = prev.map((c) =>
-            c.id === editingId
-              ? { ...c, data, savedAt: new Date().toISOString() }
-              : c
-          );
+          const updatedChallan = {
+            id: editingId,
+            data,
+            source: editingSource || "manual",
+            previewImageBase64: editingPreview || undefined,
+            savedAt: new Date().toISOString()
+          };
+          await updateChallan(editingId, updatedChallan);
+          showAlert("Challan updated successfully.", "success");
         } else {
           // Add new challan
           const newChallan: SavedChallan = {
@@ -251,23 +291,27 @@ export default function Home() {
             source: editingSource || "manual",
             data,
           };
-          updated = [newChallan, ...prev];
+          await createChallan(newChallan);
+          showAlert("Challan added successfully.", "success");
         }
 
-        saveChallans(updated);
-        return updated;
-      });
+        // Reload data from backend
+        await loadBackendChallans();
 
-      reset();
-      setEditingChallan(null);
-      setEditingId(null);
-      setEditingSource(null);
-      setEditingPreview(null);
-      setIncomingUpdates(null);
-      setLiveChallanData(null);
-      setAppView("dashboard");
+        reset();
+        setEditingChallan(null);
+        setEditingId(null);
+        setEditingSource(null);
+        setEditingPreview(null);
+        setIncomingUpdates(null);
+        setLiveChallanData(null);
+        setAppView("dashboard");
+      } catch (err) {
+        console.error("Save error:", err);
+        showAlert("Failed to save challan to database.", "error");
+      }
     },
-    [editingId, editingSource, editingPreview, reset, result]
+    [editingId, editingSource, editingPreview, reset, result, loadBackendChallans, showAlert]
   );
 
   const handleEditFromDashboard = useCallback((challan: SavedChallan) => {
@@ -280,13 +324,16 @@ export default function Home() {
     setAppView("edit");
   }, []);
 
-  const handleDeleteChallan = useCallback((id: string) => {
-    setChallans((prev) => {
-      const updated = prev.filter((c) => c.id !== id);
-      saveChallans(updated);
-      return updated;
-    });
-  }, []);
+  const handleDeleteChallan = useCallback(async (id: string) => {
+    try {
+      await deleteChallan(id);
+      showAlert("Challan deleted successfully.", "success");
+      await loadBackendChallans();
+    } catch (err) {
+      console.error("Delete error:", err);
+      showAlert("Failed to delete challan.", "error");
+    }
+  }, [loadBackendChallans, showAlert]);
 
   const handleBackToDashboard = useCallback(() => {
     reset();
@@ -325,27 +372,39 @@ export default function Home() {
     setPrintData(data);
   }, []);
 
+  const handleLogout = () => {
+    localStorage.removeItem("trident_auth_token");
+    setIsAuthenticated(false);
+  };
+
+  if (!authChecked) {
+    return null; // Or a loading spinner
+  }
+
+  if (!isAuthenticated) {
+    return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <main className="flex-1 flex flex-col min-h-screen">
       {/* ── Top Navigation Bar (always visible) ──────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-6 py-3 shadow-sm">
-        <div className="max-w-screen-2xl mx-auto flex items-center justify-between">
+      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 md:px-6 py-3 shadow-sm">
+        <div className="max-w-screen-2xl mx-auto flex flex-wrap items-center justify-between gap-3">
           {/* Logo — Trident company branding */}
           <div className="flex items-center gap-2.5">
             <img
-              src="/trident-logo.png"
-              alt="Trident Logo"
-              style={{ height: 40, width: "auto" }}
+              src="https://optimo360.com/wp-content/themes/optimo360-blocksy/optimo360-lockup-color.svg"
+              alt="Optimo360 Logo"
+              style={{ height: 32, width: "auto" }}
               className="object-contain"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
-            <span className="text-sm font-bold px-3 py-1 rounded bg-[#1a237e]/10 text-[#1a237e] border border-[#1a237e]/20 uppercase tracking-wide">
+            <span className="text-xs md:text-sm font-bold px-2 md:px-3 py-1 rounded bg-[#1a237e]/10 text-[#1a237e] border border-[#1a237e]/20 uppercase tracking-wide">
               Challan &amp; Despatch
             </span>
           </div>
 
           {/* Right side: actions based on view */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             {(appView === "edit" || appView === "upload" || appView === "loading") && (
               <button
                 type="button"
@@ -356,6 +415,15 @@ export default function Home() {
                 Back to Dashboard
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all ml-2"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Logout
+            </button>
 
             {/* {appView === "edit" && (
               <ModelToggle
@@ -396,26 +464,6 @@ export default function Home() {
 
         {appView === "upload" && !loading && !result && (
           <div className="flex-1 flex flex-col bg-[#f0f2f5]">
-            {/* Error Alert */}
-            <AnimatePresence>
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="mx-auto mt-4 p-3 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between text-red-600 text-xs max-w-3xl w-full"
-                >
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-500" />
-                    <span>{error}</span>
-                  </div>
-                  <button type="button" onClick={handleBackToDashboard} className="text-red-600 underline">
-                    Dismiss
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
             {/* Upload Card */}
             <div className="flex-1 flex items-start justify-center pt-10 px-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 w-full max-w-3xl">
@@ -520,10 +568,10 @@ export default function Home() {
         )}
 
         {appView === "edit" && editingChallan && editingSource !== "voice" && (
-          <div className="flex-1 grid grid-cols-12 overflow-hidden" style={{ height: "calc(100vh - 57px)" }}>
+          <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 overflow-hidden" style={{ height: "calc(100vh - 57px)" }}>
             {/* Left Panel: Document image viewer (upload mode only) */}
             {editingSource === "upload" && (
-              <div className="col-span-5 h-full flex flex-col overflow-hidden border-r border-gray-200 bg-[#07080b]">
+              <div className="w-full lg:col-span-5 h-1/3 lg:h-full flex flex-col overflow-hidden border-b lg:border-b-0 lg:border-r border-gray-200 bg-[#07080b]">
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <DocumentViewer
                     previewUrl={previewUrl || (editingPreview ? (editingPreview.startsWith("data:") ? editingPreview : `data:image/jpeg;base64,${editingPreview}`) : null)}
@@ -537,7 +585,7 @@ export default function Home() {
             )}
 
             {/* Right Panel: Editable Challan Form */}
-            <div className={`${editingSource === "upload" ? "col-span-7" : "col-span-12"} h-full overflow-hidden`}>
+            <div className={`w-full ${editingSource === "upload" ? "lg:col-span-7" : "lg:col-span-12"} flex-1 lg:h-full overflow-hidden`}>
               <ChallanEditPanel
                 key={`${editingSource}-${editingId || "new"}`}
                 initialData={editingChallan}
@@ -551,7 +599,7 @@ export default function Home() {
 
         {/* Voice mode: flex layout — VoiceAssistantPanel self-manages its width (collapsed/expanded) */}
         {appView === "edit" && editingChallan && editingSource === "voice" && (
-          <div className="flex-1 flex overflow-hidden" style={{ height: "calc(100vh - 57px)" }}>
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden" style={{ height: "calc(100vh - 57px)" }}>
             <VoiceAssistantPanel
               currentData={liveChallanData || editingChallan}
               onApplyUpdates={(updates) => setIncomingUpdates({ ...updates })}

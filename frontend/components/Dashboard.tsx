@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
@@ -27,6 +27,7 @@ import {
   AlertCircle,
   Mic,
   PenLine,
+  Download,
 } from "lucide-react";
 import { SavedChallan, ChallanData } from "@/types/ocr";
 
@@ -233,16 +234,17 @@ function buildEWayJSON(data: ChallanData): object {
   };
 }
 
-// ── Export a single challan to CSV in E-way Bill Format ──────────────
-function exportChallanCSV(data: ChallanData): void {
+import * as XLSX from 'xlsx';
+
+// ── Export a single challan to Excel ──────────────
+function exportChallanExcel(data: ChallanData): void {
   const computedWeight = data.items
     .reduce((sum, item) => sum + parseFloat(item.weightMT || "0"), 0)
     .toFixed(3);
   const totalAmt = data.totalValueInclTax || "0";
 
-  // Mimics the structure of E-way Bill Format-01.xlsx
-  const rows: (string | number | null)[][] = [
-    // Header
+  // Mimics the exact structure of E-way Bill Format-01.xlsx
+  const rows: any[][] = [
     [null, "e-Way Bill / Challan Export", null, null, null, null, null, null, "<Challan Record>"],
     [null],
     [null, "1. E-WAY BILL Details"],
@@ -296,19 +298,24 @@ function exportChallanCSV(data: ChallanData): void {
     [null, data.remarks || ""],
   );
 
-  const csvContent = "\uFEFF" + rows.map((r) =>
-    r.map(v => v === null ? "" : typeof v === "string" && v.includes(",") ? `"${v.replace(/"/g, '""')}"` : String(v ?? ""))
-     .join(",")
-  ).join("\r\n");
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
 
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", `eway-bill_${data.challanNo.replace(/\//g, "-")}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  ws['!cols'] = [
+    { wch: 3 },  // A (nulls)
+    { wch: 20 }, // B
+    { wch: 35 }, // C
+    { wch: 10 }, // D
+    { wch: 25 }, // E
+    { wch: 10 }, // F
+    { wch: 10 }, // G
+    { wch: 25 }, // H
+    { wch: 15 }, // I
+    { wch: 15 }, // J
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, "Challan");
+  XLSX.writeFile(wb, `eway-bill_${data.challanNo.replace(/\//g, "-")}.xlsx`);
 }
 
 export function Dashboard({ challans, onUpload, onNewChallan, onNewVoiceChallan, onEdit, onView, onDelete }: DashboardProps) {
@@ -360,30 +367,34 @@ export function Dashboard({ challans, onUpload, onNewChallan, onNewVoiceChallan,
   };
 
   return (
-    <div className="min-h-screen bg-white font-sans">
+    <div className="flex-1 flex flex-col bg-[#f0f2f5] overflow-y-auto">
       {/* Dashboard Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-end">
-        <div className="flex items-center gap-2">
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-black text-gray-900 tracking-tight">Recent Challans</h1>
+          <p className="text-sm text-gray-500 font-medium mt-0.5">Manage and export your generated challans</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-md border border-[#1a237e] text-[#1a237e] text-sm font-bold hover:bg-[#1a237e]/10 transition-colors bg-white"
+            className="flex items-center gap-2 px-3 py-2 rounded-md border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 transition-colors shadow-sm text-sm font-semibold"
           >
             <Settings className="w-4 h-4" />
-            E-Way Bill setup
+            <span className="hidden sm:inline">E-Way Bill Setup</span>
           </button>
           <button
             type="button"
             onClick={onUpload}
-            className="flex items-center gap-2 px-4 py-2 rounded-md border border-[#1a237e] text-[#1a237e] text-sm font-bold hover:bg-[#1a237e]/10 transition-colors bg-white"
+            className="flex items-center gap-2 px-3 py-2 rounded-md border border-[#1a237e] text-[#1a237e] bg-white hover:bg-[#1a237e]/5 transition-colors shadow-sm text-sm font-bold ml-auto sm:ml-0"
           >
             <Upload className="w-4 h-4" />
-            Upload challan
+            <span className="hidden sm:inline">Upload</span>
           </button>
           <button
             type="button"
             onClick={() => setNewChallanModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#1a237e] text-white text-sm font-bold hover:bg-[#283593] transition-colors shadow-md"
+            className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#1a237e] text-white text-sm font-bold hover:bg-[#283593] transition-colors shadow-md flex-1 sm:flex-none justify-center"
           >
             <Plus className="w-4 h-4" />
             New challan
@@ -392,7 +403,7 @@ export function Dashboard({ challans, onUpload, onNewChallan, onNewVoiceChallan,
       </div>
 
       {/* Content */}
-      <div className="max-w-screen-2xl mx-auto px-6 py-6">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-6 w-full">
         {challans.length === 0 ? (
           /* Empty State */
           <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -416,7 +427,7 @@ export function Dashboard({ challans, onUpload, onNewChallan, onNewVoiceChallan,
           /* Challan List & Search */
           <div className="space-y-4">
             {/* Search Bar and Badge Row */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
               <div className="flex-1 relative">
                 <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -427,13 +438,13 @@ export function Dashboard({ challans, onUpload, onNewChallan, onNewVoiceChallan,
                   className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-shadow"
                 />
               </div>
-              <div className="px-4 py-2 rounded-md bg-[#1a237e] text-white text-sm font-bold shadow-md shadow-[#1a237e]/20 flex-shrink-0">
+              <div className="px-4 py-2 rounded-md bg-[#1a237e] text-white text-sm font-bold shadow-md shadow-[#1a237e]/20 flex-shrink-0 text-center">
                 {filteredChallans.length} challan{filteredChallans.length !== 1 ? 's' : ''}
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-md overflow-hidden shadow-sm">
-              <table className="w-full text-left text-xs text-gray-700">
+            <div className="bg-white border border-gray-200 rounded-md overflow-x-auto shadow-sm">
+              <table className="w-full min-w-[800px] text-left text-xs text-gray-700">
                 <thead className="bg-[#f8fafc] border-b border-gray-200 text-gray-500 font-bold tracking-widest uppercase text-[10px]">
                   <tr>
                     <th className="px-4 py-3 font-bold">CHALLAN NO.</th>
@@ -518,9 +529,9 @@ export function Dashboard({ challans, onUpload, onNewChallan, onNewVoiceChallan,
                             </button>
                             <button
                               type="button"
-                              onClick={() => exportChallanCSV(challan.data)}
+                              onClick={() => exportChallanExcel(challan.data)}
                               className="dashboard-action-btn text-green-600 bg-green-50 hover:bg-green-100"
-                              title="Export Excel/CSV"
+                              title="Export Excel"
                             >
                               <FileSpreadsheet className="w-3.5 h-3.5" />
                               <span>Excel</span>

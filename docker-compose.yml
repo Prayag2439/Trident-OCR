@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # Backend: FastAPI OCR & VLM Intelligence Engine
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: trident-backend
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      - GOOGLE_MODEL=${GOOGLE_MODEL:-gemini-2.0-flash}
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:3000,http://localhost}
+      - MIN_DPI=${MIN_DPI:-200}
+      - TEXT_CHAR_THRESHOLD=${TEXT_CHAR_THRESHOLD:-12}
+    volumes:
+      - trident-db-data:/app/data
+      - ./backend/challans.db:/app/challans.db
+      - trident-model-cache:/root/.cache
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - trident-network
+
+  # ----------------------------------------------------------------------------
+  # Frontend: Next.js 14 Interactive Dashboard
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+        - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-}
+    container_name: trident-frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - trident-network
+
+  # ----------------------------------------------------------------------------
+  # Reverse Proxy: Nginx (ZERO-CORS Single-Origin Gateway)
+  # ----------------------------------------------------------------------------
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: trident-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - trident-network
+
+networks:
+  trident-network:
+    driver: bridge
+
+volumes:
+  trident-db-data:
+    driver: local
+  trident-model-cache:
+    driver: local

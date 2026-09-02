@@ -53,7 +53,7 @@ export function useOCRPipeline() {
       formData.append("file", uploadedFile);
       formData.append("model_override", modelToUse);
 
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
       const response = await fetch(`${API_BASE}/api/v1/process-document`, {
         method: "POST",
         body: formData,

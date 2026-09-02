@@ -76,6 +76,21 @@ Open `http://localhost:3000` in your browser.
 
 ---
 
+## 🚢 Production Deployment (Jenkins CI/CD & Docker)
+
+For complete automated CI/CD pipeline deployment instructions with zero CORS errors, please refer to the dedicated:
+👉 **[JENKINS_DEPLOYMENT_GUIDE.md](file:///d:/Wrok%20Main/Trident/JENKINS_DEPLOYMENT_GUIDE.md)**
+
+```bash
+# Quick Launch via Docker Compose (Zero-CORS Single-Origin Gateway)
+docker compose up -d --build
+```
+- **Frontend App**: `http://localhost/`
+- **Backend API**: `http://localhost/api/`
+- **Swagger Docs**: `http://localhost/docs`
+
+---
+
 ## 📡 API Contract
 
 ### Endpoint
