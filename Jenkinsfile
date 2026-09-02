@@ -10,8 +10,8 @@ pipeline {
 
     parameters {
         choice(name: 'DEPLOY_ENV', choices: ['production', 'staging'], description: 'Deployment Environment')
-        string(name: 'OPENAI_MODEL_OVERRIDE', defaultValue: 'gpt-4o', description: 'OpenAI Model')
-        string(name: 'GOOGLE_MODEL_OVERRIDE', defaultValue: 'gemini-2.0-flash', description: 'Google Gemini Model')
+        string(name: 'OPENAI_MODEL_OVERRIDE', defaultValue: '', description: 'OpenAI Model (Leave empty to use .env value)')
+        string(name: 'GOOGLE_MODEL_OVERRIDE', defaultValue: '', description: 'Google Gemini Model (Leave empty to use .env value)')
         booleanParam(name: 'PRUNE_OLD_IMAGES', defaultValue: true, description: 'Clean up unused Docker images after deploy')
     }
 
@@ -19,16 +19,6 @@ pipeline {
         COMPOSE_PROJECT_NAME = 'trident'
         DOCKER_BUILDKIT      = '1'
         COMPOSE_DOCKER_CLI_BUILD = '1'
-        
-        // Secrets mapped from Jenkins Credentials Manager
-        OPENAI_API_KEY       = credentials('trident-openai-api-key')
-        GOOGLE_API_KEY       = credentials('trident-google-api-key')
-
-        // CORS & Routing Settings (empty NEXT_PUBLIC_API_URL enables zero-CORS relative proxy)
-        NEXT_PUBLIC_API_URL  = ''
-        NEXT_PUBLIC_BACKEND_URL = ''
-        OPENAI_MODEL         = "${params.OPENAI_MODEL_OVERRIDE}"
-        GOOGLE_MODEL         = "${params.GOOGLE_MODEL_OVERRIDE}"
     }
 
     stages {
@@ -38,7 +28,8 @@ pipeline {
                 sh '''
                     docker --version
                     docker compose version
-                    echo "Checking available disk space..."
+                    echo "Checking repository structure and unified .env..."
+                    test -f .env || echo "WARNING: .env not found, using environment defaults"
                     df -h .
                 '''
             }
@@ -68,19 +59,17 @@ pipeline {
 
         stage('Build Docker Images') {
             steps {
-                echo "==> [Stage 2] Building Optimized Multi-Stage Images..."
+                echo "==> [Stage 2] Building Optimized Multi-Stage Images via Docker Compose..."
                 sh '''
-                    # Inject runtime and build-time variables into .env for Docker Compose
-                    cat <<EOF > .env
-OPENAI_API_KEY=${OPENAI_API_KEY}
-GOOGLE_API_KEY=${GOOGLE_API_KEY}
-OPENAI_MODEL=${OPENAI_MODEL}
-GOOGLE_MODEL=${GOOGLE_MODEL}
-NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL}
-FRONTEND_ORIGIN=http://localhost:3000,http://localhost
-EOF
-                    # Build all services (backend, frontend, nginx)
+                    # If model overrides are provided via Jenkins parameters, apply them
+                    if [ -n "${OPENAI_MODEL_OVERRIDE}" ]; then
+                        sed -i "s/^OPENAI_MODEL=.*/OPENAI_MODEL=${OPENAI_MODEL_OVERRIDE}/" .env || true
+                    fi
+                    if [ -n "${GOOGLE_MODEL_OVERRIDE}" ]; then
+                        sed -i "s/^GOOGLE_MODEL=.*/GOOGLE_MODEL=${GOOGLE_MODEL_OVERRIDE}/" .env || true
+                    fi
+
+                    # Build all services (backend, frontend, nginx) using root .env
                     docker compose build --parallel
                 '''
             }
@@ -146,7 +135,6 @@ EOF
     post {
         always {
             echo "Pipeline run completed."
-            sh 'rm -f .env || true'
         }
         success {
             echo "================================================================="

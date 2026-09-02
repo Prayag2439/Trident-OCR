@@ -1,0 +1,67 @@
+name: Trident CI/CD & Zero-CORS Verification
+
+on:
+  push:
+    branches: [ "main", "feature-voice-assistant", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-verify:
+    name: Build & Verify Docker Stack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: ⚙️ Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 🔍 Python Code Validation
+        run: |
+          python -m py_compile backend/main.py backend/config.py backend/database.py
+
+      - name: 🐳 Validate Docker Compose Configuration
+        run: |
+          docker compose config
+
+      - name: 🏗️ Build Docker Containers (Parallel)
+        run: |
+          docker compose build --parallel
+
+      - name: 🚀 Start Services in Background
+        run: |
+          docker compose up -d
+          sleep 15
+
+      - name: 🩺 Smoke Test & Zero-CORS Handshake Check
+        run: |
+          echo "=== 1. Checking Gateway Root HTTP Status ==="
+          curl -f -I http://localhost/ || exit 1
+
+          echo "=== 2. Checking Direct Backend Health ==="
+          curl -f http://localhost:8000/ || exit 1
+
+          echo "=== 3. Checking Zero-CORS Preflight Handshake ==="
+          curl -s -I -X OPTIONS http://localhost/api/v1/process-document \
+            -H "Origin: http://localhost:3000" \
+            -H "Access-Control-Request-Method: POST" | grep -i "Access-Control-Allow-Origin"
+
+          echo "=== 4. Checking API Swagger Docs ==="
+          curl -f -I http://localhost/docs || exit 1
+
+      - name: 🛑 Teardown Services
+        if: always()
+        run: |
+          docker compose down -v

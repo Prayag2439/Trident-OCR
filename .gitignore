@@ -2,12 +2,11 @@
 # Trident Git Ignore Configuration
 # ==============================================================================
 
-# ── Environments & Secrets ──
-.env
+# ── Environments & Local Overrides ──
 .env.local
 .env.*.local
-.env.production
-.env.staging
+.env.staging.local
+.env.production.local
 
 # ── Python & Virtual Environments ──
 __pycache__/
