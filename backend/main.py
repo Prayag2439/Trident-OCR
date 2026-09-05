@@ -5,6 +5,7 @@ from routers.process import router as process_router
 from routers.assistant import router as assistant_router
 from routers.challans import router as challans_router
 from routers.auth import router as auth_router
+from routers.canvas_challans import router as canvas_challans_router
 from config import settings
 
 app = FastAPI(
@@ -37,6 +38,7 @@ app.include_router(process_router)
 app.include_router(assistant_router)
 app.include_router(challans_router)
 app.include_router(auth_router)
+app.include_router(canvas_challans_router)
 
 @app.get("/")
 def root():

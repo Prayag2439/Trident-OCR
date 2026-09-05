@@ -3,14 +3,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  FileText,
-  Layers,
-  Sparkles,
   ArrowLeft,
-  Cpu,
-  AlertCircle,
   Upload,
-  Copy,
   Check,
   LogOut,
 } from "lucide-react";
@@ -22,11 +16,14 @@ import { ChallanEditPanel } from "@/components/ChallanEditPanel";
 import { ChallanPrintView } from "@/components/ChallanPrintView";
 import { Dashboard } from "@/components/Dashboard";
 import { VoiceAssistantPanel } from "@/components/VoiceAssistantPanel";
+import { CanvasScribblePanel } from "@/components/CanvasScribblePanel";
 import {
   EWayBillInvoiceData,
   ChallanData,
   ChallanItem,
   SavedChallan,
+  SavedCanvasChallan,
+  AuthUser,
 } from "@/types/ocr";
 
 // ─── Helper: Map OCR result → ChallanData ─────────────────────────────────
@@ -58,9 +55,9 @@ function mapOCRtoChallan(
     const desc = sanitize(item.productDesc || item.productName) || "";
     let wt = (item as any).weightMT || "0.000";
     // Extract MT weight from description if backend returned 0
-    if (parseFloat(wt) === 0 && desc) {
-      const mtMatch = desc.match(/[-–]\s*(\d+\.?\d*)\s*MT\b/i);
-      if (mtMatch) wt = parseFloat(mtMatch[1]).toFixed(3);
+    if (Number.parseFloat(wt) === 0 && desc) {
+      const mtMatch = /[-–]\s*(\d+\.?\d*)\s*MT\b/i.exec(desc);
+      if (mtMatch) wt = Number.parseFloat(mtMatch[1]).toFixed(3);
     }
     return {
       slNo: String(i + 1),
@@ -77,7 +74,7 @@ function mapOCRtoChallan(
   });
 
   const computedWeight = items
-    .reduce((sum, item) => sum + parseFloat(item.weightMT || "0"), 0)
+    .reduce((sum, item) => sum + Number.parseFloat(item.weightMT || "0"), 0)
     .toFixed(3);
 
     const baseRemarks = sanitize((s as any).remarks) || "";
@@ -137,35 +134,60 @@ const STORAGE_KEY = "trident_challans_v1";
 
 // We now use the backend SQLite database for persistence.
 // The frontend only interacts with the backend API.
-import { fetchChallans, createChallan, updateChallan, deleteChallan, migrateLegacyChallans } from "@/utils/api";
+import {
+  fetchChallans,
+  createChallan,
+  updateChallan,
+  deleteChallan,
+  migrateLegacyChallans,
+  fetchCanvasChallans,
+  updateCanvasChallan,
+  deleteCanvasChallan,
+} from "@/utils/api";
 import { useToast } from "@/components/ToastProvider";
 import { LoginScreen } from "@/components/LoginScreen";
 
 // ─── View states ───────────────────────────────────────────────────────────
-type AppView = "dashboard" | "upload" | "edit" | "loading";
+type AppView = "dashboard" | "upload" | "edit" | "loading" | "canvas_scribble";
+
+function resolveViewerPreview(previewUrl: string | null, editingPreview: string | null): string | null {
+  if (previewUrl) return previewUrl;
+  if (!editingPreview) return null;
+  if (editingPreview.startsWith("data:")) return editingPreview;
+  return `data:image/jpeg;base64,${editingPreview}`;
+}
 
 export default function Home() {
   const { showAlert } = useToast();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [appView, setAppView] = useState<AppView>("dashboard");
   const [challans, setChallans] = useState<SavedChallan[]>([]);
+  const [canvasChallans, setCanvasChallans] = useState<SavedCanvasChallan[]>([]);
   const [editingChallan, setEditingChallan] = useState<ChallanData | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingSource, setEditingSource] = useState<"manual" | "upload" | "voice" | null>(null);
+  const [editingSource, setEditingSource] = useState<"manual" | "upload" | "voice" | "scribble" | null>(null);
   const [editingPreview, setEditingPreview] = useState<string | null>(null);
   const [printData, setPrintData] = useState<ChallanData | null>(null);
-  const [rawTextCopied, setRawTextCopied] = useState(false);
   // Incoming updates pushed from VoiceAssistantPanel → ChallanEditPanel
   const [incomingUpdates, setIncomingUpdates] = useState<Partial<ChallanData> | null>(null);
   // Tracks the current live challan data for voice panel context
   const [liveChallanData, setLiveChallanData] = useState<ChallanData | null>(null);
 
-  // Check auth on mount
+  // Check auth and user on mount
   useEffect(() => {
     const token = localStorage.getItem("trident_auth_token");
+    const userStr = localStorage.getItem("trident_auth_user");
     if (token) {
       setIsAuthenticated(true);
+      if (userStr) {
+        try {
+          setCurrentUser(JSON.parse(userStr));
+        } catch (e) {
+          console.error("Failed to parse stored user", e);
+        }
+      }
     }
     setAuthChecked(true);
   }, []);
@@ -199,15 +221,27 @@ export default function Home() {
     reset,
   } = useOCRPipeline();
 
-  const loadBackendChallans = useCallback(async () => {
+  const loadBackendChallans = useCallback(async (user?: AuthUser | null) => {
     try {
-      const data = await fetchChallans();
+      const u = user !== undefined ? user : currentUser;
+      const data = await fetchChallans(u?.email, u?.role || "admin");
       setChallans(data);
     } catch (err) {
       console.error("Failed to load challans from backend", err);
       showAlert("Failed to load challans from database.", "error");
     }
-  }, [showAlert]);
+  }, [currentUser, showAlert]);
+
+  const loadBackendCanvasChallans = useCallback(async (user?: AuthUser | null) => {
+    try {
+      const u = user !== undefined ? user : currentUser;
+      const data = await fetchCanvasChallans(u?.email, u?.role || "admin");
+      setCanvasChallans(data);
+    } catch (err) {
+      console.error("Failed to load canvas challans from backend", err);
+      showAlert("Failed to load canvas challans from database.", "error");
+    }
+  }, [currentUser, showAlert]);
 
   // Migrate from localStorage to SQLite on mount, then load
   useEffect(() => {
@@ -225,10 +259,16 @@ export default function Home() {
       } catch (err) {
         console.error("Migration failed:", err);
       }
-      loadBackendChallans();
+      const userStr = localStorage.getItem("trident_auth_user");
+      let u: AuthUser | null = null;
+      if (userStr) {
+        try { u = JSON.parse(userStr); } catch (_) {}
+      }
+      loadBackendChallans(u);
+      loadBackendCanvasChallans(u);
     };
     init();
-  }, [loadBackendChallans, showAlert]);
+  }, [loadBackendChallans, loadBackendCanvasChallans, showAlert]);
 
   // When OCR result arrives, map it and switch to edit view
   useEffect(() => {
@@ -289,6 +329,9 @@ export default function Home() {
             savedAt: new Date().toISOString(),
             previewImageBase64: editingPreview || result?.document_meta?.preview_image_base64 || undefined,
             source: editingSource || "manual",
+            userId: currentUser?.email || "admin@optimo.com",
+            creatorName: currentUser?.name || "Admin",
+            role: currentUser?.role || "admin",
             data,
           };
           await createChallan(newChallan);
@@ -311,7 +354,7 @@ export default function Home() {
         showAlert("Failed to save challan to database.", "error");
       }
     },
-    [editingId, editingSource, editingPreview, reset, result, loadBackendChallans, showAlert]
+    [editingId, editingSource, editingPreview, reset, result, loadBackendChallans, showAlert, currentUser]
   );
 
   const handleEditFromDashboard = useCallback((challan: SavedChallan) => {
@@ -334,6 +377,28 @@ export default function Home() {
       showAlert("Failed to delete challan.", "error");
     }
   }, [loadBackendChallans, showAlert]);
+
+  const handleDeleteCanvasChallan = useCallback(async (id: string) => {
+    try {
+      await deleteCanvasChallan(id);
+      showAlert("Challan deleted successfully.", "success");
+      await loadBackendCanvasChallans();
+    } catch (err) {
+      console.error("Delete error:", err);
+      showAlert("Failed to delete challan.", "error");
+    }
+  }, [loadBackendCanvasChallans, showAlert]);
+
+  const handleUpdateCanvasChallan = useCallback(async (id: string, updates: Partial<SavedCanvasChallan>) => {
+    try {
+      await updateCanvasChallan(id, updates);
+      showAlert("Challan updated successfully.", "success");
+      await loadBackendCanvasChallans();
+    } catch (err) {
+      console.error("Update error:", err);
+      showAlert("Failed to update challan.", "error");
+    }
+  }, [loadBackendCanvasChallans, showAlert]);
 
   const handleBackToDashboard = useCallback(() => {
     reset();
@@ -372,8 +437,21 @@ export default function Home() {
     setPrintData(data);
   }, []);
 
+  const handleUpdateStandardChallan = useCallback(async (id: string, updatedChallan: SavedChallan) => {
+    try {
+      await updateChallan(id, updatedChallan);
+      showAlert("Challan updated successfully.", "success");
+      await loadBackendChallans();
+    } catch (err) {
+      console.error("Update challan error:", err);
+      showAlert("Failed to update challan.", "error");
+    }
+  }, [loadBackendChallans, showAlert]);
+
   const handleLogout = () => {
     localStorage.removeItem("trident_auth_token");
+    localStorage.removeItem("trident_auth_user");
+    setCurrentUser(null);
     setIsAuthenticated(false);
   };
 
@@ -382,30 +460,61 @@ export default function Home() {
   }
 
   if (!isAuthenticated) {
-    return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
+    return (
+      <LoginScreen
+        onLogin={(user) => {
+          if (user) {
+            setCurrentUser(user);
+            loadBackendChallans(user);
+            loadBackendCanvasChallans(user);
+          }
+          setIsAuthenticated(true);
+        }}
+      />
+    );
   }
 
   return (
     <main className="flex-1 flex flex-col min-h-screen">
       {/* ── Top Navigation Bar (always visible) ──────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 md:px-6 py-3 shadow-sm">
-        <div className="max-w-screen-2xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          {/* Logo — Trident company branding */}
-          <div className="flex items-center gap-2.5">
+      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 md:px-6 py-2.5 shadow-xs">
+        <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-4">
+          {/* Left: Trident Logo branding */}
+          <div className="flex items-center gap-3 flex-shrink-0">
             <img
-              src="https://optimo360.com/wp-content/themes/optimo360-blocksy/optimo360-lockup-color.svg"
-              alt="Optimo360 Logo"
-              style={{ height: 32, width: "auto" }}
+              src="/trident-logo.png"
+              alt="Trident"
+              style={{ height: 38, width: "auto" }}
               className="object-contain"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
-            <span className="text-xs md:text-sm font-bold px-2 md:px-3 py-1 rounded bg-[#1a237e]/10 text-[#1a237e] border border-[#1a237e]/20 uppercase tracking-wide">
+          </div>
+
+          {/* Center: Challan & Despatch aligned to center and increased size */}
+          <div className="flex-1 flex justify-center text-center">
+            <h1 className="text-base sm:text-xl md:text-2xl font-black tracking-wider text-[#1a237e] uppercase drop-shadow-xs">
               Challan &amp; Despatch
-            </span>
+            </h1>
           </div>
 
           {/* Right side: actions based on view */}
-          <div className="flex items-center gap-2 md:gap-3">
-            {(appView === "edit" || appView === "upload" || appView === "loading") && (
+          <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+            {currentUser && (
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-xs shadow-xs">
+                <span className="font-bold text-gray-800">{currentUser.name}</span>
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                    currentUser.role === "admin"
+                      ? "bg-purple-100 text-purple-700 border border-purple-200"
+                      : "bg-blue-100 text-blue-700 border border-blue-200"
+                  }`}
+                >
+                  {currentUser.role}
+                </span>
+              </div>
+            )}
+
+            {(appView === "edit" || appView === "upload" || appView === "loading" || appView === "canvas_scribble") && (
               <button
                 type="button"
                 onClick={handleBackToDashboard}
@@ -419,29 +528,11 @@ export default function Home() {
             <button
               type="button"
               onClick={handleLogout}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all ml-2"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all ml-1"
             >
               <LogOut className="w-3.5 h-3.5" />
               Logout
             </button>
-
-            {/* {appView === "edit" && (
-              <ModelToggle
-                selectedModel={selectedModel}
-                onSelectModel={setSelectedModel}
-                disabled={loading}
-              />
-            )} */}
-
-            {/* {appView === "upload" && (
-              <ModelToggle
-                selectedModel={selectedModel}
-                onSelectModel={setSelectedModel}
-                disabled={loading}
-              />
-            )} */}
-
-            {/* Backend Ready field removed as per user request */}
           </div>
         </div>
       </header>
@@ -453,12 +544,18 @@ export default function Home() {
         {appView === "dashboard" && (
           <Dashboard
             challans={challans}
+            canvasChallans={canvasChallans}
+            currentUser={currentUser}
             onUpload={() => setAppView("upload")}
             onNewChallan={handleNewChallan}
             onNewVoiceChallan={handleNewVoiceChallan}
+            onNewCanvasChallan={() => setAppView("canvas_scribble")}
             onEdit={handleEditFromDashboard}
             onView={handleViewChallan}
             onDelete={handleDeleteChallan}
+            onDeleteCanvasChallan={handleDeleteCanvasChallan}
+            onUpdateCanvasChallan={handleUpdateCanvasChallan}
+            onUpdateChallan={handleUpdateStandardChallan}
           />
         )}
 
@@ -553,7 +650,7 @@ export default function Home() {
                 <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center p-4">
                   <img
                     src="/trident-logo.png"
-                    alt="Trident Logo"
+                    alt="Trident"
                     className="w-full h-auto object-contain animate-pulse"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
@@ -569,12 +666,12 @@ export default function Home() {
 
         {appView === "edit" && editingChallan && editingSource !== "voice" && (
           <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 overflow-hidden" style={{ height: "calc(100vh - 57px)" }}>
-            {/* Left Panel: Document image viewer (upload mode only) */}
-            {editingSource === "upload" && (
+            {/* Left Panel: Document / Scribble image viewer on laptop web view */}
+            {(editingSource === "upload" || Boolean(editingPreview) || Boolean(previewUrl)) && (
               <div className="w-full lg:col-span-5 h-1/3 lg:h-full flex flex-col overflow-hidden border-b lg:border-b-0 lg:border-r border-gray-200 bg-[#07080b]">
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <DocumentViewer
-                    previewUrl={previewUrl || (editingPreview ? (editingPreview.startsWith("data:") ? editingPreview : `data:image/jpeg;base64,${editingPreview}`) : null)}
+                    previewUrl={resolveViewerPreview(previewUrl, editingPreview)}
                     meta={result?.document_meta || null}
                     regions={result?.extracted_regions || []}
                     activeRegion={activeRegion}
@@ -585,7 +682,7 @@ export default function Home() {
             )}
 
             {/* Right Panel: Editable Challan Form */}
-            <div className={`w-full ${editingSource === "upload" ? "lg:col-span-7" : "lg:col-span-12"} flex-1 lg:h-full overflow-hidden`}>
+            <div className={`w-full ${(editingSource === "upload" || Boolean(editingPreview) || Boolean(previewUrl)) ? "lg:col-span-7" : "lg:col-span-12"} flex-1 lg:h-full overflow-hidden`}>
               <ChallanEditPanel
                 key={`${editingSource}-${editingId || "new"}`}
                 initialData={editingChallan}
@@ -616,6 +713,19 @@ export default function Home() {
               />
             </div>
           </div>
+        )}
+
+        {/* VIEW: Canvas Scribble */}
+        {appView === "canvas_scribble" && (
+          <CanvasScribblePanel
+            currentUser={currentUser}
+            onBack={handleBackToDashboard}
+            onSaved={async (saved) => {
+              await loadBackendCanvasChallans();
+              showAlert("Scribble challan processed and saved successfully.", "success");
+              setAppView("dashboard");
+            }}
+          />
         )}
 
       </div>

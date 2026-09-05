@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import {
   Plus,
   Trash2,
-  Save,
   Copy,
   Check,
   Send,
@@ -13,6 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  Printer,
   ArrowLeft,
   FileText,
   Truck,
@@ -91,6 +91,12 @@ function buildEWayJSON(data: ChallanData): object {
     transMode: data.transMode || "1",
     vehicleType: data.vehicleType || "R",
   };
+}
+
+function getAiMessageClass(type: string): string {
+  if (type === "success") return "bg-green-50 text-green-700 border border-green-200";
+  if (type === "clarify") return "bg-amber-50 text-amber-700 border border-amber-200";
+  return "bg-red-50 text-red-700 border border-red-200";
 }
 
 export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomingUpdates, onDataChange }: ChallanEditPanelProps) {
@@ -173,7 +179,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
   };
 
   const computedWeight = data.items
-    .reduce((sum, item) => sum + parseFloat(item.weightMT || "0"), 0)
+    .reduce((sum, item) => sum + Number.parseFloat(item.weightMT || "0"), 0)
     .toFixed(3);
 
   const finalJSON = buildEWayJSON(data);
@@ -277,7 +283,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
       rows.push([
         String(i + 1),
         item.itemNo,
-        `"${item.description.replace(/"/g, '""')}"`,
+        `"${item.description.replaceAll('"', '""')}"`,
         item.qty,
         item.unit,
         item.weightMT,
@@ -291,7 +297,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
       ["Total Value Incl. Tax (₹)", data.totalValueInclTax],
       [],
       ["--- REMARKS / TERMS ---"],
-      ["Remarks", `"${data.remarks.replace(/"/g, '""')}"`]
+      ["Remarks", `"${data.remarks.replaceAll('"', '""')}"`]
     );
 
     const csvContent = "\uFEFF" + rows.map((r) => r.join(",")).join("\r\n");
@@ -299,10 +305,10 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `challan_${data.challanNo.replace(/\//g, "-")}.csv`);
+    link.setAttribute("download", `challan_${data.challanNo.replaceAll("/", "-")}.csv`);
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
 
     setCopiedExcel(true);
     setTimeout(() => setCopiedExcel(false), 2500);
@@ -352,53 +358,63 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
           </div>
           <div className="p-4 grid grid-cols-3 gap-3">
             <div>
-              <label className="field-label">Challan No.</label>
+              <label htmlFor="edit-challan-no" className="field-label">Challan No.</label>
               <input
+                id="edit-challan-no"
                 type="text"
                 value={data.challanNo}
                 onChange={(e) => updateField("challanNo", e.target.value)}
                 className="field-input"
                 placeholder="e.g. TFPL/08/2026-27/4"
+                aria-label="Challan Number"
               />
             </div>
             <div>
-              <label className="field-label">Date</label>
+              <label htmlFor="edit-challan-date" className="field-label">Date</label>
               <input
+                id="edit-challan-date"
                 type="text"
                 value={data.date}
                 onChange={(e) => updateField("date", e.target.value)}
                 className="field-input"
                 placeholder="DD/MM/YYYY"
+                aria-label="Challan Date"
               />
             </div>
             <div>
-              <label className="field-label">Your Order No.</label>
+              <label htmlFor="edit-order-no" className="field-label">Your Order No.</label>
               <input
+                id="edit-order-no"
                 type="text"
                 value={data.yourOrderNo}
                 onChange={(e) => updateField("yourOrderNo", e.target.value)}
                 className="field-input"
                 placeholder="Recipient PO / Order No."
+                aria-label="Your Order Number"
               />
             </div>
             <div>
-              <label className="field-label">Vehicle No.</label>
+              <label htmlFor="edit-vehicle-no" className="field-label">Vehicle No.</label>
               <input
+                id="edit-vehicle-no"
                 type="text"
                 value={data.vehicleNo}
                 onChange={(e) => updateField("vehicleNo", e.target.value)}
                 className="field-input"
                 placeholder="e.g. OD 15 XXXX"
+                aria-label="Vehicle Number"
               />
             </div>
             <div className="col-span-2">
-              <label className="field-label">E-Way Bill No. (if already generated)</label>
+              <label htmlFor="edit-eway-no" className="field-label">E-Way Bill No. (if already generated)</label>
               <input
+                id="edit-eway-no"
                 type="text"
                 value={data.ewayBillNo}
                 onChange={(e) => updateField("ewayBillNo", e.target.value)}
                 className="field-input"
                 placeholder="—"
+                aria-label="E-Way Bill Number"
               />
             </div>
           </div>
@@ -414,33 +430,39 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
           </div>
           <div className="p-4 grid grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Party Name</label>
+              <label htmlFor="edit-party-name" className="field-label">Party Name</label>
               <input
+                id="edit-party-name"
                 type="text"
                 value={data.partyName}
                 onChange={(e) => updateField("partyName", e.target.value)}
                 className="field-input"
                 placeholder="Recipient company name"
+                aria-label="Party Name"
               />
             </div>
             <div>
-              <label className="field-label">GSTIN</label>
+              <label htmlFor="edit-gstin" className="field-label">GSTIN</label>
               <input
+                id="edit-gstin"
                 type="text"
                 value={data.gstin}
                 onChange={(e) => updateField("gstin", e.target.value)}
                 className="field-input"
                 placeholder="15-char GSTIN"
+                aria-label="Consignee GSTIN"
               />
             </div>
             <div className="col-span-2">
-              <label className="field-label">Address</label>
+              <label htmlFor="edit-address" className="field-label">Address</label>
               <input
+                id="edit-address"
                 type="text"
                 value={data.address}
                 onChange={(e) => updateField("address", e.target.value)}
                 className="field-input"
                 placeholder="Full delivery address"
+                aria-label="Consignee Address"
               />
             </div>
           </div>
@@ -469,7 +491,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
               </thead>
               <tbody>
                 {data.items.map((item, i) => (
-                  <tr key={i} className="border-b border-gray-100 hover:bg-blue-50/40 transition-colors">
+                  <tr key={item.slNo ? `item-sl-${item.slNo}` : `item-row-${item.itemNo}-${item.description}`} className="border-b border-gray-100 hover:bg-blue-50/40 transition-colors">
                     <td className="goods-td text-center text-gray-400">{i + 1}</td>
                     <td className="goods-td">
                       <input
@@ -478,6 +500,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         onChange={(e) => updateItem(i, "itemNo", e.target.value)}
                         className="cell-input"
                         placeholder="HSN code"
+                        aria-label={`Item ${i + 1} HSN code`}
                       />
                     </td>
                     <td className="goods-td">
@@ -487,6 +510,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         onChange={(e) => updateItem(i, "description", e.target.value)}
                         className="cell-input"
                         placeholder="Item description..."
+                        aria-label={`Item ${i + 1} Description`}
                       />
                     </td>
                     <td className="goods-td">
@@ -496,6 +520,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         onChange={(e) => updateItem(i, "qty", e.target.value)}
                         className="cell-input text-center"
                         placeholder="1"
+                        aria-label={`Item ${i + 1} Quantity`}
                       />
                     </td>
                     <td className="goods-td">
@@ -503,6 +528,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         value={item.unit}
                         onChange={(e) => updateItem(i, "unit", e.target.value)}
                         className="cell-input bg-white"
+                        aria-label={`Item ${i + 1} Unit`}
                       >
                         {UNIT_OPTIONS.map((u) => (
                           <option key={u} value={u}>{u}</option>
@@ -516,6 +542,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         onChange={(e) => updateItem(i, "weightMT", e.target.value)}
                         className="cell-input text-right"
                         placeholder="0.000"
+                        aria-label={`Item ${i + 1} Weight in MT`}
                       />
                     </td>
                     <td className="goods-td text-center">
@@ -523,6 +550,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         type="button"
                         onClick={() => removeItem(i)}
                         className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                        aria-label={`Remove item ${i + 1}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -554,23 +582,27 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
               <p className="text-2xl font-black text-gray-900">{computedWeight} <span className="text-sm font-bold text-gray-500">MT</span></p>
             </div>
             <div className="px-4 py-3 border-r border-gray-200">
-              <label className="field-label">Total Weight Override (Optional)</label>
+              <label htmlFor="edit-weight-override" className="field-label">Total Weight Override (Optional)</label>
               <input
+                id="edit-weight-override"
                 type="text"
                 value={data.totalWeightOverride}
                 onChange={(e) => updateField("totalWeightOverride", e.target.value)}
                 className="field-input mt-1"
                 placeholder={computedWeight}
+                aria-label="Total Weight Override"
               />
             </div>
             <div className="px-4 py-3">
-              <label className="field-label">Total Value Incl. Tax (₹)</label>
+              <label htmlFor="edit-total-value" className="field-label">Total Value Incl. Tax (₹)</label>
               <input
+                id="edit-total-value"
                 type="text"
                 value={data.totalValueInclTax}
                 onChange={(e) => updateField("totalValueInclTax", e.target.value)}
                 className="field-input mt-1"
                 placeholder="0"
+                aria-label="Total Value Including Tax"
               />
             </div>
           </div>
@@ -585,12 +617,15 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
             </span>
           </div>
           <div className="p-4">
+            <label htmlFor="edit-remarks" className="field-label">Additional notes / Remarks / Terms</label>
             <textarea
+              id="edit-remarks"
               value={data.remarks}
               onChange={(e) => updateField("remarks", e.target.value)}
               rows={3}
-              className="field-input resize-none"
+              className="field-input resize-none mt-1"
               placeholder="e.g. Above mentioned material issued to G.P. Engg for job work basis on returnable basis. Not for sale."
+              aria-label="Remarks and terms"
             />
             {data.extraFields && (
               <div className="mt-2 p-3 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-700">
@@ -636,13 +671,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
               </button>
             </div>
             {aiMessage && (
-              <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-medium ${
-                aiMessage.type === "success"
-                  ? "bg-green-50 text-green-700 border border-green-200"
-                  : aiMessage.type === "clarify"
-                  ? "bg-amber-50 text-amber-700 border border-amber-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
-              }`}>
+              <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-medium ${getAiMessageClass(aiMessage.type)}`}>
                 {aiMessage.text}
               </div>
             )}
@@ -713,14 +742,24 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
           <ArrowLeft className="w-4 h-4" />
           Cancel
         </button>
-        <button
-          type="button"
-          onClick={() => onSave({ ...data, computedWeightMT: computedWeight })}
-          className="flex items-center gap-1.5 px-5 py-2 text-sm font-bold rounded-lg bg-[#1a237e] text-white hover:bg-[#283593] transition-colors shadow"
-        >
-          <Check className="w-4 h-4" />
-          Save challan
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onView({ ...data, computedWeightMT: computedWeight })}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs"
+          >
+            <Printer className="w-4 h-4" />
+            Print / Preview
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave({ ...data, computedWeightMT: computedWeight })}
+            className="flex items-center gap-1.5 px-5 py-2 text-sm font-bold rounded-lg bg-[#1a237e] text-white hover:bg-[#283593] transition-colors shadow"
+          >
+            <Check className="w-4 h-4" />
+            Save challan
+          </button>
+        </div>
       </div>
 
       {/* Scoped styles */}

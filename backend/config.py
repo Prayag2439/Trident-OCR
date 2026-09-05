@@ -4,9 +4,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
     
     OPENAI_MODEL: str = "gpt-4o"
     GOOGLE_MODEL: str = "gemini-2.0-flash"
+    GROQ_MODEL: str = "llama-3.2-90b-vision-preview"
     
     LAYOUT_MODEL_PATH: str = "yolov8x-doclaynet.pt"
     MIN_DPI: int = 200
@@ -28,4 +30,8 @@ class Settings(BaseSettings):
     def get_clean_google_key(self) -> str:
         return self.GOOGLE_API_KEY.strip()
 
+    def get_clean_groq_key(self) -> str:
+        return self.GROQ_API_KEY.strip()
+
 settings = Settings()
+

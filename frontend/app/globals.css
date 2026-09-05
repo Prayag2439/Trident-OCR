@@ -8,7 +8,7 @@
 }
 
 body {
-  color: #f3f4f6;
+  color: #111827;
   background-color: #fff;
   overflow-x: hidden;
 }
@@ -85,4 +85,35 @@ body {
 .border-brand-cyan\/20 { border-color: rgba(0,240,255,0.2); }
 .border-brand-cyan\/30 { border-color: rgba(0,240,255,0.3); }
 .shadow-glow { box-shadow: 0 0 16px rgba(0,240,255,0.15); }
+
+/* ── Smooth micro-animation utilities ─────────────────────────────────── */
+@keyframes smoothFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-smooth-in {
+  animation: smoothFadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-backdrop-in {
+  animation: backdropFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Smooth active button press */
+button, a {
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 

@@ -22,7 +22,6 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Optimo Challan Console",
   description: "Enterprise-grade challan and despatch document extraction pipeline.",
-  manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -40,6 +39,42 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                window.__deferredPrompt = null;
+                window.addEventListener('beforeinstallprompt', function(e) {
+                  e.preventDefault();
+                  window.__deferredPrompt = e;
+                  window.dispatchEvent(new CustomEvent('pwa-prompt-ready', { detail: e }));
+                });
+                window.addEventListener('appinstalled', function() {
+                  window.__deferredPrompt = null;
+                  console.log('[PWA] App installed');
+                });
+                function registerSW() {
+                  if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('/sw.js', { scope: '/' }).then(function(reg) {
+                      console.log('[PWA] ServiceWorker registered:', reg.scope);
+                    }).catch(function(err) {
+                      console.warn('[PWA] ServiceWorker registration failed:', err);
+                    });
+                  }
+                }
+                if (document.readyState === 'complete' || document.readyState === 'interactive') {
+                  registerSW();
+                } else {
+                  window.addEventListener('DOMContentLoaded', registerSW);
+                  window.addEventListener('load', registerSW);
+                }
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className="antialiased min-h-screen flex flex-col bg-white text-gray-900 font-sans">
         <ToastProvider>
           {children}

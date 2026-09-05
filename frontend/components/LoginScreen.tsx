@@ -1,20 +1,26 @@
 import { useState, useEffect } from "react";
 import { login } from "@/utils/api";
 import { useToast } from "@/components/ToastProvider";
-import { Lock, Mail, Loader2, ArrowRight, Download } from "lucide-react";
+import { Loader2, Download } from "lucide-react";
 import { motion } from "framer-motion";
+import { AuthUser } from "@/types/ocr";
 
-export function LoginScreen({ onLogin }: { onLogin: () => void }) {
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+export function LoginScreen({ onLogin }: { onLogin: (user?: AuthUser | null) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const { showAlert } = useToast();
 
   useEffect(() => {
-    const handleBeforeInstallPrompt = (e: any) => {
+    const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e);
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -23,7 +29,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
-      deferredPrompt.prompt();
+      await deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setDeferredPrompt(null);
@@ -42,10 +48,21 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
     try {
       const { token } = await login(email, password);
       localStorage.setItem("trident_auth_token", token);
+      let userObj: AuthUser | null = null;
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        userObj = { email: payload.sub, name: payload.name, role: payload.role };
+        localStorage.setItem("trident_user", JSON.stringify(userObj));
+      } catch {
+        const name = email.split('@')[0];
+        userObj = { email, name: name.charAt(0).toUpperCase() + name.slice(1), role: email.includes("admin") ? "admin" : "employee" };
+        localStorage.setItem("trident_user", JSON.stringify(userObj));
+      }
       showAlert("Login successful", "success");
-      onLogin();
-    } catch (err: any) {
-      showAlert(err.message || "Invalid email or password", "error");
+      onLogin(userObj);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid email or password";
+      showAlert(msg, "error");
     } finally {
       setLoading(false);
     }
@@ -56,13 +73,13 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
       <motion.div 
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
+        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
         className="max-w-sm w-full bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 overflow-hidden"
       >
         <div className="pt-10 pb-6 px-8 text-center flex flex-col items-center">
           <img 
             src="https://optimo360.com/wp-content/themes/optimo360-blocksy/optimo360-lockup-color.svg" 
-            alt="Optimo360 Logo" 
+            alt="Optimo360" 
             className="h-10 w-auto mb-6"
           />
           <h2 className="text-xl font-bold text-gray-900 tracking-tight">Log in to your account</h2>
@@ -72,24 +89,28 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         <form onSubmit={handleLogin} className="px-8 pb-10 space-y-5">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+              <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a237e]/20 focus:border-[#1a237e] transition-colors placeholder-gray-400"
                 placeholder="admin@optimo.com"
+                aria-label="Email address"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a237e]/20 focus:border-[#1a237e] transition-colors placeholder-gray-400"
                 placeholder="••••••••"
+                aria-label="Password"
               />
             </div>
           </div>

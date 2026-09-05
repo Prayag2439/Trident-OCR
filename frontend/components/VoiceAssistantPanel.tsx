@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Mic, MicOff, Loader2, Bot, User, ChevronLeft, ChevronRight } from "lucide-react";
+import { Mic, MicOff, Loader2, Bot, User, ChevronDown, ChevronUp } from "lucide-react";
+
 import { ChallanData } from "@/types/ocr";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -25,6 +26,18 @@ interface Message {
 
 type RecordingState = "idle" | "listening" | "processing";
 
+function getMicButtonColorClass(state: RecordingState): string {
+  if (state === "listening") return "bg-red-600 hover:bg-red-700 shadow-red-900/60";
+  if (state === "processing") return "bg-indigo-800 opacity-60 cursor-not-allowed";
+  return "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-900/50 hover:scale-105 active:scale-95 border-indigo-400/30";
+}
+
+function renderMicIcon(state: RecordingState) {
+  if (state === "processing") return <Loader2 className="w-6 h-6 animate-spin text-white" />;
+  if (state === "listening") return <MicOff className="w-6 h-6 text-white" />;
+  return <Mic className="w-6 h-6 text-white" />;
+}
+
 export interface VoiceAssistantPanelProps {
   currentData: ChallanData;
   onApplyUpdates: (updates: Partial<ChallanData>) => void;
@@ -32,9 +45,10 @@ export interface VoiceAssistantPanelProps {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function VoiceAssistantPanel({ currentData, onApplyUpdates }: VoiceAssistantPanelProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+export function VoiceAssistantPanel({ currentData, onApplyUpdates }: Readonly<VoiceAssistantPanelProps>) {
+  const [isMobileExpanded, setIsMobileExpanded] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
+
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [messages, setMessages] = useState<Message[]>([
@@ -82,7 +96,7 @@ export function VoiceAssistantPanel({ currentData, onApplyUpdates }: VoiceAssist
       vadRafRef.current = null;
     }
     if (audioContextRef.current) {
-      try { audioContextRef.current.close(); } catch { /* ignore */ }
+      audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
     silenceStartRef.current = null;
@@ -245,12 +259,12 @@ export function VoiceAssistantPanel({ currentData, onApplyUpdates }: VoiceAssist
       hasSpeechRef.current = false;
       silenceStartRef.current = null;
       recordingStartRef.current = Date.now();
-
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "audio/mp4";
+      let mimeType = "audio/mp4";
+      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+        mimeType = "audio/webm;codecs=opus";
+      } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+        mimeType = "audio/webm";
+      }
 
       const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
@@ -311,18 +325,37 @@ export function VoiceAssistantPanel({ currentData, onApplyUpdates }: VoiceAssist
     <>
       {/* ── Left Sidebar: Chat Interface (Active only after interaction starts) ── */}
       {hasInteracted && (
-        <div className="flex-shrink-0 w-full md:w-80 h-1/3 md:h-full flex flex-col bg-[#07080b] text-white border-b md:border-b-0 md:border-r border-white/10 shadow-2xl z-40 relative">
+        <div
+          className={`flex-shrink-0 w-full md:w-80 flex flex-col bg-[#07080b] text-white border-b md:border-b-0 md:border-r border-white/10 shadow-2xl z-40 relative transition-all duration-300 ${
+            isMobileExpanded ? "h-64 md:h-full" : "h-11 md:h-full"
+          }`}
+        >
           {/* Header */}
-          <div className="flex-shrink-0 px-4 py-3 border-b border-white/10 flex items-center gap-2">
+          <div className="flex-shrink-0 px-4 py-2.5 border-b border-white/10 flex items-center gap-2">
             <Bot className="w-4 h-4 text-indigo-400" />
             <span className="text-xs font-bold uppercase tracking-widest text-white/70">Voice Assistant</span>
-            <span className="ml-auto flex items-center gap-2">
-              <span className="text-[10px] text-white/25 font-mono hidden sm:inline">GPT-5 + Whisper</span>
+            
+            {/* Mobile collapsible toggle */}
+            <button
+              type="button"
+              onClick={() => setIsMobileExpanded(!isMobileExpanded)}
+              className="md:hidden flex items-center gap-1 text-[11px] text-indigo-400 bg-white/5 hover:bg-white/10 px-2 py-1 rounded border border-white/10 ml-auto"
+            >
+              <span>{isMobileExpanded ? "Hide transcript" : "Show transcript"}</span>
+              {isMobileExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+            </button>
+
+            <span className="ml-auto hidden md:flex items-center gap-2">
+              <span className="text-[10px] text-white/25 font-mono">GPT-5 + Whisper</span>
             </span>
           </div>
 
-          {/* Message history — scrollable */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0 pb-32">
+          {/* Message history — scrollable on desktop, and only shown on mobile when expanded */}
+          <div
+            className={`flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0 pb-32 ${
+              isMobileExpanded ? "block" : "hidden md:block"
+            }`}
+          >
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -352,6 +385,7 @@ export function VoiceAssistantPanel({ currentData, onApplyUpdates }: VoiceAssist
         </div>
       )}
 
+
       {/* ── Fixed Bottom-Center Mic Overlay ── */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none">
         
@@ -366,13 +400,13 @@ export function VoiceAssistantPanel({ currentData, onApplyUpdates }: VoiceAssist
           {recordingState === "listening" && (
             <span className="flex items-center gap-1.5 text-[11px] text-red-400 font-semibold">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              Listening… tap to stop
+              <span>Listening… tap to stop</span>
             </span>
           )}
           {recordingState === "processing" && (
             <span className="flex items-center gap-1.5 text-[11px] text-indigo-300 font-semibold">
               <Loader2 className="w-3 h-3 animate-spin" />
-              Processing…
+              <span>Processing…</span>
             </span>
           )}
         </div>
@@ -385,22 +419,11 @@ export function VoiceAssistantPanel({ currentData, onApplyUpdates }: VoiceAssist
           aria-label={recordingState === "listening" ? "Stop recording" : "Start recording"}
           className={`relative w-16 h-16 rounded-full flex items-center justify-center pointer-events-auto
             transition-all duration-300 shadow-xl focus:outline-none border-2 border-transparent
-            ${recordingState === "listening"
-              ? "bg-red-600 hover:bg-red-700 shadow-red-900/60"
-              : recordingState === "processing"
-              ? "bg-indigo-800 opacity-60 cursor-not-allowed"
-              : "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-900/50 hover:scale-105 active:scale-95 border-indigo-400/30"
-            }
+            ${getMicButtonColorClass(recordingState)}
             ${isSpeaking && recordingState === "listening" ? "scale-110 shadow-[0_0_30px_rgba(239,68,68,0.8)] border-red-400/50" : ""}
           `}
         >
-          {recordingState === "processing" ? (
-            <Loader2 className="w-6 h-6 animate-spin text-white" />
-          ) : recordingState === "listening" ? (
-            <MicOff className="w-6 h-6 text-white" />
-          ) : (
-            <Mic className="w-6 h-6 text-white" />
-          )}
+          {renderMicIcon(recordingState)}
 
           {/* Animated pulse rings while listening */}
           {recordingState === "listening" && (

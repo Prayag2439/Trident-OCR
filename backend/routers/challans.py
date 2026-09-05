@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 import json
 from database import get_db
 
@@ -11,6 +11,9 @@ class ChallanCreate(BaseModel):
     data: Dict[Any, Any]
     source: Optional[str] = "manual"
     previewImageBase64: Optional[str] = None
+    userId: Optional[Union[str, int]] = "admin@optimo.com"
+    creatorName: Optional[str] = "Admin"
+    role: Optional[str] = "admin"
     savedAt: str
 
 class ChallanUpdate(BaseModel):
@@ -20,20 +23,39 @@ class ChallanUpdate(BaseModel):
     savedAt: str
 
 @router.get("/")
-def get_challans():
-    """Fetch all saved challans from SQLite."""
+def get_challans(user_id: Optional[str] = None, role: Optional[str] = "admin"):
+    """Fetch saved challans from SQLite filtered by role/user_id."""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM challans ORDER BY saved_at DESC")
+        if role == "admin" or not user_id:
+            cursor.execute("SELECT * FROM challans ORDER BY saved_at DESC")
+        else:
+            cursor.execute("SELECT * FROM challans WHERE user_id = ? ORDER BY saved_at DESC", (user_id,))
         rows = cursor.fetchall()
         
         result = []
         for row in rows:
+            creator = ""
+            try:
+                creator = row["creator_name"]
+            except Exception:
+                creator = ""
+            if not creator:
+                try:
+                    creator = row["user_id"]
+                except Exception:
+                    creator = ""
+            if not creator:
+                creator = "Admin"
+
             result.append({
                 "id": row["id"],
                 "data": json.loads(row["data"]),
-                "source": row["source"],
+                "source": row["source"] or "manual",
                 "previewImageBase64": row["preview_image_base64"],
+                "userId": row["user_id"] if "user_id" in row.keys() else "admin@optimo.com",
+                "creatorName": creator,
+                "role": row["role"] if "role" in row.keys() else "admin",
                 "savedAt": row["saved_at"]
             })
         return result
@@ -46,14 +68,17 @@ def create_challan(challan: ChallanCreate):
         try:
             cursor.execute(
                 """
-                INSERT INTO challans (id, data, source, preview_image_base64, saved_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO challans (id, data, source, preview_image_base64, user_id, creator_name, role, saved_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     challan.id,
                     json.dumps(challan.data),
-                    challan.source,
+                    challan.source or "manual",
                     challan.previewImageBase64,
+                    challan.userId or "admin@optimo.com",
+                    challan.creatorName or "Admin",
+                    challan.role or "admin",
                     challan.savedAt
                 )
             )
