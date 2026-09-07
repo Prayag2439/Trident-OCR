@@ -67,7 +67,14 @@ export function LoginScreen({ onLogin }: { onLogin: (user?: AuthUser | null) => 
       showAlert("Login successful", "success");
       onLogin(userObj);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Invalid email or password";
+      let msg = "Invalid email or password";
+      if (err instanceof Error) {
+        if (err.message === "Load failed" || err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+          msg = "Unable to connect to backend server. Please verify backend is running on port 8000.";
+        } else {
+          msg = err.message;
+        }
+      }
       showAlert(msg, "error");
     } finally {
       setLoading(false);

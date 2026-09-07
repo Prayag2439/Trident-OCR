@@ -31,6 +31,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { SavedChallan, ChallanData, SavedCanvasChallan, CanvasChallanItem, AuthUser } from "@/types/ocr";
+import { applyParsedDimensions, applyParsedDimensionsCanvas, parseSteelDescription } from "@/utils/steelParser";
 
 interface DashboardProps {
   challans: SavedChallan[];
@@ -240,19 +241,29 @@ function buildEWayJSON(data: ChallanData): object {
     remarks: data.remarks,
     extraFields: data.extraFields || "",
     handwrittenNotes: data.handwrittenNotes || "",
-    itemList: data.items.map((item, i) => ({
-      itemNo: String(i + 1),
-      productDesc: item.description,
-      hsnCode: item.itemNo,
-      quantity: item.qty,
-      unit: item.unit || "NOS",
-      weightMT: item.weightMT,
-      taxableAmount: item.taxableAmount || "0",
-      cgstRate: item.cgstRate || "9",
-      sgstRate: item.sgstRate || "9",
-      igstRate: item.igstRate || "0",
-      cessRate: "0",
-    })),
+    itemList: data.items.map((item, i) => {
+      const parsed = applyParsedDimensions(item);
+      return {
+        itemNo: String(i + 1),
+        productName: item.description,
+        productDesc: item.description,
+        hsnCode: item.itemNo,
+        materialType: parsed.materialType || "",
+        thicknessMm: parsed.thicknessMm || "",
+        widthMm: parsed.widthMm || "",
+        heightMm: parsed.heightMm || "",
+        lengthMm: parsed.lengthMm || "",
+        quantity: item.qty,
+        qtyUnit: item.unit || "NOS",
+        unit: item.unit || "NOS",
+        weightMT: item.weightMT,
+        taxableAmount: item.taxableAmount || "0",
+        cgstRate: item.cgstRate || "9",
+        sgstRate: item.sgstRate || "9",
+        igstRate: item.igstRate || "0",
+        cessRate: "0",
+      };
+    }),
     transMode: data.transMode || "1",
     vehicleType: data.vehicleType || "R",
   };
@@ -297,19 +308,27 @@ function mapCanvasToChallanData(canvas: SavedCanvasChallan): ChallanData {
     remarks: canvas.remarks || "",
     extraFields: canvas.extra_fields || "",
     handwrittenNotes: "",
-    items: (canvas.items || []).map((it, idx) => ({
-      slNo: it.sr_no || String(idx + 1),
-      itemNo: it.item_no || "",
-      description: it.description || "",
-      qty: it.quantity || "1",
-      unit: it.unit || "NOS",
-      weightMT: it.weight_mt || "0.000",
-      taxableAmount: "0",
-      cgstRate: "9",
-      sgstRate: "9",
-      igstRate: "0",
-      cessRate: "0",
-    })),
+    items: (canvas.items || []).map((it, idx) => {
+      const parsed = applyParsedDimensionsCanvas(it);
+      return {
+        slNo: it.sr_no || String(idx + 1),
+        itemNo: it.item_no || "",
+        description: it.description || "",
+        materialType: parsed.material_type || "",
+        thicknessMm: parsed.thickness_mm || "",
+        widthMm: parsed.width_mm || "",
+        heightMm: parsed.height_mm || "",
+        lengthMm: parsed.length_mm || "",
+        qty: it.quantity || "1",
+        unit: it.unit || "NOS",
+        weightMT: it.weight_mt || "0.000",
+        taxableAmount: "0",
+        cgstRate: "9",
+        sgstRate: "9",
+        igstRate: "0",
+        cessRate: "0",
+      };
+    }),
   };
 }
 
@@ -326,28 +345,34 @@ function exportChallanExcel(data: ChallanData): void {
 
   // Exact reproduction of Challan Preview Window (ChallanPrintView)
   const rows: (string | number | boolean | null | undefined)[][] = [
-    ["TRIDENT FABRICATORS PVT. LTD.", "", "", "", "", ""],
-    ["Plot No - 112, Industrial Estate, Kalunga, Sambalpur, Odisha - 768212", "", "", "", "", ""],
-    ["(An ISO 9001-2008 Certified Company)", "", "", "", "", ""],
-    [`GSTIN: ${data.fromGstin || "21AACCT1555G1ZR"} | PAN: AACCT1555G`, "", "", "", "", ""],
+    ["TRIDENT FABRICATORS PVT. LTD.", "", "", "", "", "", "", "", "", "", ""],
+    ["Plot No - 112, Industrial Estate, Kalunga, Sambalpur, Odisha - 768212", "", "", "", "", "", "", "", "", "", ""],
+    ["(An ISO 9001-2008 Certified Company)", "", "", "", "", "", "", "", "", "", ""],
+    [`GSTIN: ${data.fromGstin || "21AACCT1555G1ZR"} | PAN: AACCT1555G`, "", "", "", "", "", "", "", "", "", ""],
     [],
-    ["DELIVERY CHALLAN & DESPATCH NOTE", "", "", "", "", ""],
+    ["DELIVERY CHALLAN & DESPATCH NOTE", "", "", "", "", "", "", "", "", "", ""],
     [],
-    ["Challan No.:", data.challanNo || "—", "Date:", data.date || "—", "Your Order No.:", data.yourOrderNo || "—"],
-    ["Vehicle No.:", data.vehicleNo || "—", "E-Way Bill No.:", data.ewayBillNo || "—", "Order Date:", data.date || "—"],
+    ["Challan No.:", data.challanNo || "—", "Date:", data.date || "—", "Your Order No.:", data.yourOrderNo || "—", "", "", "", "", ""],
+    ["Vehicle No.:", data.vehicleNo || "—", "E-Way Bill No.:", data.ewayBillNo || "—", "Order Date:", data.date || "—", "", "", "", "", ""],
     [],
-    ["CONSIGNEE (TO):", "", "", "", "", ""],
-    ["Party Name:", data.partyName || "—", "GSTIN:", data.gstin || "—", "", ""],
-    ["Delivery Address:", data.address || "—", "", "", "", ""],
+    ["CONSIGNEE (TO):", "", "", "", "", "", "", "", "", "", ""],
+    ["Party Name:", data.partyName || "—", "GSTIN:", data.gstin || "—", "", "", "", "", "", "", ""],
+    ["Delivery Address:", data.address || "—", "", "", "", "", "", "", "", "", ""],
     [],
-    ["Sl.", "Item No (HSN)", "Description of Goods", "QTY", "UNIT", "Weight (MT)"],
+    ["Sl.", "Item No (HSN)", "Description of Goods", "Mat. Type", "Thickness (mm)", "Width (mm)", "Height (mm)", "Length (mm)", "QTY", "UNIT", "Weight (MT)"],
   ];
 
   data.items.forEach((it, idx) => {
+    const parsed = applyParsedDimensions(it);
     rows.push([
       it.slNo || String(idx + 1),
       it.itemNo || "—",
       it.description || "—",
+      parsed.materialType || "—",
+      parsed.thicknessMm || "—",
+      parsed.widthMm || "—",
+      parsed.heightMm || "—",
+      parsed.lengthMm || "—",
       it.qty || "—",
       it.unit || "NOS",
       it.weightMT || "0.000",
@@ -357,42 +382,47 @@ function exportChallanExcel(data: ChallanData): void {
   const totalsStartIdx = rows.length;
   rows.push(
     [],
-    ["Total Computed Weight (MT):", computedWeight, "", "", "", ""],
-    ["Total Weight Override (MT):", data.totalWeightOverride || "—", "", "", "", ""],
-    ["Total Value (Incl. Tax) ₹:", totalAmt, "", "", "", ""],
+    ["Total Computed Weight (MT):", computedWeight, "", "", "", "", "", "", "", "", ""],
+    ["Total Weight Override (MT):", data.totalWeightOverride || "—", "", "", "", "", "", "", "", "", ""],
+    ["Total Value (Incl. Tax) ₹:", totalAmt, "", "", "", "", "", "", "", "", ""],
     [],
-    ["Remarks / Terms & Conditions:", "", "", "", "", ""],
-    [data.remarks || "—", "", "", "", "", ""],
+    ["Remarks / Terms & Conditions:", "", "", "", "", "", "", "", "", "", ""],
+    [data.remarks || "—", "", "", "", "", "", "", "", "", "", ""],
     [],
-    ["Receiver's Signature", "", "", "For TRIDENT FABRICATORS PVT. LTD.", "", ""],
-    ["", "", "", "Authorised Signatory", "", ""]
+    ["Receiver's Signature", "", "", "", "", "For TRIDENT FABRICATORS PVT. LTD.", "", "", "", "", ""],
+    ["", "", "", "", "", "Authorised Signatory", "", "", "", "", ""]
   );
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(rows);
 
   ws['!cols'] = [
-    { wch: 8 },  // Sl.
-    { wch: 18 }, // Item No (HSN)
-    { wch: 45 }, // Description
-    { wch: 12 }, // QTY
+    { wch: 6 },  // Sl.
+    { wch: 16 }, // Item No (HSN)
+    { wch: 35 }, // Description
+    { wch: 12 }, // Mat. Type
+    { wch: 14 }, // Thickness (mm)
+    { wch: 12 }, // Width (mm)
+    { wch: 12 }, // Height (mm)
+    { wch: 12 }, // Length (mm)
+    { wch: 10 }, // QTY
     { wch: 10 }, // UNIT
-    { wch: 16 }, // Weight (MT)
+    { wch: 14 }, // Weight (MT)
   ];
 
   ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Header Title
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }, // Address
-    { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }, // ISO
-    { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } }, // GSTIN | PAN
-    { s: { r: 5, c: 0 }, e: { r: 5, c: 5 } }, // DELIVERY CHALLAN & DESPATCH NOTE
-    { s: { r: 10, c: 0 }, e: { r: 10, c: 5 } }, // CONSIGNEE (TO)
-    { s: { r: 12, c: 1 }, e: { r: 12, c: 5 } }, // Address value
-    { s: { r: totalsStartIdx + 4, c: 0 }, e: { r: totalsStartIdx + 4, c: 5 } }, // Remarks heading
-    { s: { r: totalsStartIdx + 5, c: 0 }, e: { r: totalsStartIdx + 5, c: 5 } }, // Remarks value
-    { s: { r: rows.length - 2, c: 0 }, e: { r: rows.length - 2, c: 2 } }, // Receiver's Signature
-    { s: { r: rows.length - 2, c: 3 }, e: { r: rows.length - 2, c: 5 } }, // For Trident
-    { s: { r: rows.length - 1, c: 3 }, e: { r: rows.length - 1, c: 5 } }, // Authorised Signatory
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }, // Header Title
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }, // Address
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 10 } }, // ISO
+    { s: { r: 3, c: 0 }, e: { r: 3, c: 10 } }, // GSTIN | PAN
+    { s: { r: 5, c: 0 }, e: { r: 5, c: 10 } }, // DELIVERY CHALLAN & DESPATCH NOTE
+    { s: { r: 10, c: 0 }, e: { r: 10, c: 10 } }, // CONSIGNEE (TO)
+    { s: { r: 12, c: 1 }, e: { r: 12, c: 10 } }, // Address value
+    { s: { r: totalsStartIdx + 4, c: 0 }, e: { r: totalsStartIdx + 4, c: 10 } }, // Remarks heading
+    { s: { r: totalsStartIdx + 5, c: 0 }, e: { r: totalsStartIdx + 5, c: 10 } }, // Remarks value
+    { s: { r: rows.length - 2, c: 0 }, e: { r: rows.length - 2, c: 4 } }, // Receiver's Signature
+    { s: { r: rows.length - 2, c: 5 }, e: { r: rows.length - 2, c: 10 } }, // For Trident
+    { s: { r: rows.length - 1, c: 5 }, e: { r: rows.length - 1, c: 10 } }, // Authorised Signatory
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, "Delivery Challan");
@@ -482,32 +512,54 @@ function EditChallanModal({
 
   const [items, setItems] = useState<CanvasChallanItem[]>(() => {
     if (isStandard && std?.items && std.items.length > 0) {
-      return std.items.map((it, idx) => ({
-        sr_no: it.slNo || String(idx + 1),
-        item_no: it.itemNo || "",
-        description: it.description || "",
-        quantity: it.qty || "1",
-        unit: it.unit || "NOS",
-        weight_mt: it.weightMT || "0.000",
-      }));
+      return std.items.map((it, idx) =>
+        applyParsedDimensionsCanvas({
+          sr_no: it.slNo || String(idx + 1),
+          item_no: it.itemNo || "",
+          description: it.description || "",
+          material_type: it.materialType || "",
+          thickness_mm: it.thicknessMm || "",
+          width_mm: it.widthMm || "",
+          height_mm: it.heightMm || "",
+          length_mm: it.lengthMm || "",
+          quantity: it.qty || "1",
+          unit: it.unit || "NOS",
+          weight_mt: it.weightMT || "0.000",
+        })
+      );
     }
     if (!isStandard && cvs?.items && cvs.items.length > 0) {
-      return cvs.items.map((it, idx) => ({
-        sr_no: it.sr_no || String(idx + 1),
-        item_no: it.item_no || "",
-        description: it.description || "",
-        quantity: it.quantity || "1",
-        unit: it.unit || "NOS",
-        weight_mt: it.weight_mt || "0.000",
-      }));
+      return cvs.items.map((it, idx) =>
+        applyParsedDimensionsCanvas({
+          sr_no: it.sr_no || String(idx + 1),
+          item_no: it.item_no || "",
+          description: it.description || "",
+          material_type: it.material_type || "",
+          thickness_mm: it.thickness_mm || "",
+          width_mm: it.width_mm || "",
+          height_mm: it.height_mm || "",
+          length_mm: it.length_mm || "",
+          quantity: it.quantity || "1",
+          unit: it.unit || "NOS",
+          weight_mt: it.weight_mt || "0.000",
+        })
+      );
     }
-    return [{ sr_no: "1", item_no: "", description: "", quantity: "1", unit: "NOS", weight_mt: "0.000" }];
+    return [{ sr_no: "1", item_no: "", description: "", material_type: "", thickness_mm: "", width_mm: "", height_mm: "", length_mm: "", quantity: "1", unit: "NOS", weight_mt: "0.000" }];
   });
 
   const handleItemChange = (idx: number, field: keyof CanvasChallanItem, value: string) => {
     setItems((prev) => {
       const next = [...prev];
       const item = { ...next[idx], [field]: value };
+      if (field === "description") {
+        const parsed = parseSteelDescription(value);
+        if (parsed.materialType) item.material_type = parsed.materialType;
+        if (parsed.thicknessMm)  item.thickness_mm  = parsed.thicknessMm;
+        if (parsed.widthMm)      item.width_mm      = parsed.widthMm;
+        if (parsed.heightMm)     item.height_mm     = parsed.heightMm;
+        if (parsed.lengthMm)     item.length_mm     = parsed.lengthMm;
+      }
       if (field === "unit" || field === "quantity") {
         const qVal = Number.parseFloat(item.quantity || "0");
         if (!Number.isNaN(qVal) && qVal > 0) {
@@ -526,7 +578,7 @@ function EditChallanModal({
   const addItemRow = () => {
     setItems((prev) => [
       ...prev,
-      { sr_no: String(prev.length + 1), item_no: "", description: "", quantity: "1", unit: "NOS", weight_mt: "0.000" },
+      { sr_no: String(prev.length + 1), item_no: "", description: "", material_type: "", thickness_mm: "", width_mm: "", height_mm: "", length_mm: "", quantity: "1", unit: "NOS", weight_mt: "0.000" },
     ]);
   };
 
@@ -572,19 +624,27 @@ function EditChallanModal({
     remarks: formData.remarks,
     extraFields: "",
     handwrittenNotes: "",
-    items: items.map((it, i) => ({
-      slNo: it.sr_no || String(i + 1),
-      itemNo: it.item_no || "",
-      description: it.description || "",
-      qty: it.quantity || "1",
-      unit: it.unit || "NOS",
-      weightMT: it.weight_mt || "0.000",
-      taxableAmount: "0",
-      cgstRate: "9",
-      sgstRate: "9",
-      igstRate: "0",
-      cessRate: "0",
-    })),
+    items: items.map((it, i) => {
+      const parsed = applyParsedDimensionsCanvas(it);
+      return {
+        slNo: it.sr_no || String(i + 1),
+        itemNo: it.item_no || "",
+        description: it.description || "",
+        materialType: parsed.material_type || "",
+        thicknessMm: parsed.thickness_mm || "",
+        widthMm: parsed.width_mm || "",
+        heightMm: parsed.height_mm || "",
+        lengthMm: parsed.length_mm || "",
+        qty: it.quantity || "1",
+        unit: it.unit || "NOS",
+        weightMT: it.weight_mt || "0.000",
+        taxableAmount: "0",
+        cgstRate: "9",
+        sgstRate: "9",
+        igstRate: "0",
+        cessRate: "0",
+      };
+    }),
   };
 
   const handleCopyJSON = () => {
@@ -985,62 +1045,123 @@ function EditChallanModal({
                   <table className="w-full text-left text-xs border-collapse">
                     <thead className="bg-gray-100 text-gray-700 font-bold uppercase text-[10px] border-b border-gray-200">
                       <tr>
-                        <th className="px-3 py-2.5 w-12 text-center">Sl.</th>
-                        <th className="px-3 py-2.5 w-28">Item No. (HSN)</th>
-                        <th className="px-3 py-2.5 min-w-[200px]">Description of Goods</th>
-                        <th className="px-3 py-2.5 w-20 text-right">QTY</th>
-                        <th className="px-3 py-2.5 w-24">UNIT</th>
-                        <th className="px-3 py-2.5 w-28 text-right">Weight (MT)</th>
-                        <th className="px-2 py-2.5 w-10 text-center"></th>
+                        <th className="px-2 py-2.5 w-10 text-center">Sl.</th>
+                        <th className="px-2 py-2.5 w-24">Item No. (HSN)</th>
+                        <th className="px-2 py-2.5 min-w-[150px]">Description of Goods</th>
+                        <th className="px-2 py-2.5 w-20">Mat. Type</th>
+                        <th className="px-2 py-2.5 w-14 text-right">Thk</th>
+                        <th className="px-2 py-2.5 w-14 text-right">W</th>
+                        <th className="px-2 py-2.5 w-14 text-right">H</th>
+                        <th className="px-2 py-2.5 w-14 text-right">L</th>
+                        <th className="px-2 py-2.5 w-16 text-right">QTY</th>
+                        <th className="px-2 py-2.5 w-20">UNIT</th>
+                        <th className="px-2 py-2.5 w-24 text-right">Weight (MT)</th>
+                        <th className="px-2 py-2.5 w-8 text-center"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">
                       {items.map((it, idx) => (
                         <tr key={it.item_no || it.sr_no ? `goods-row-${it.item_no || it.sr_no}-${it.description.slice(0, 10)}` : `goods-row-${it.description}-${it.quantity}`} className="hover:bg-blue-50/40 transition-colors">
-                          <td className="px-2 py-1.5 text-center">
+                          <td className="px-1.5 py-1.5 text-center">
                             <input
                               type="text"
                               value={it.sr_no}
                               onChange={(e) => handleItemChange(idx, "sr_no", e.target.value)}
-                              className="w-10 px-1 py-1 border border-gray-300 rounded text-center text-xs font-semibold"
+                              className="w-8 px-1 py-1 border border-gray-300 rounded text-center text-xs font-semibold"
                               aria-label={`Item ${idx + 1} serial number`}
                             />
                           </td>
-                          <td className="px-2 py-1.5">
+                          <td className="px-1.5 py-1.5">
                             <input
                               type="text"
                               value={it.item_no || ""}
                               onChange={(e) => handleItemChange(idx, "item_no", e.target.value)}
                               placeholder="HSN/No."
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                              className="w-full px-1.5 py-1 border border-gray-300 rounded text-xs font-mono"
                               aria-label={`Item ${idx + 1} HSN code`}
                             />
                           </td>
-                          <td className="px-2 py-1.5">
+                          <td className="px-1.5 py-1.5">
                             <input
                               type="text"
                               value={it.description}
                               onChange={(e) => handleItemChange(idx, "description", e.target.value)}
-                              placeholder="e.g. M.S. PLATE 25MM THK"
-                              className="w-full px-2.5 py-1 border border-gray-300 rounded text-xs font-medium"
+                              placeholder="e.g. PL 8 thk x 1250 x 6300"
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-medium"
                               aria-label={`Item ${idx + 1} description`}
                             />
                           </td>
-                          <td className="px-2 py-1.5 text-right">
+                          <td className="px-1.5 py-1.5">
+                            <select
+                              value={it.material_type || ""}
+                              onChange={(e) => handleItemChange(idx, "material_type", e.target.value)}
+                              className="w-full px-1 py-1 border border-gray-300 rounded text-xs font-semibold bg-white"
+                              aria-label={`Item ${idx + 1} Material Type`}
+                            >
+                              <option value="">—</option>
+                              <option value="PLATE">PLATE</option>
+                              <option value="NPB">NPB</option>
+                              <option value="ISA">ISA</option>
+                              <option value="ISMB">ISMB</option>
+                              <option value="ISMC">ISMC</option>
+                              <option value="OTHER">OTHER</option>
+                            </select>
+                          </td>
+                          <td className="px-1 py-1.5 text-right">
+                            <input
+                              type="text"
+                              value={it.thickness_mm || ""}
+                              onChange={(e) => handleItemChange(idx, "thickness_mm", e.target.value)}
+                              placeholder="mm"
+                              className="w-full px-1 py-1 border border-gray-300 rounded text-right text-xs"
+                              aria-label={`Item ${idx + 1} Thickness`}
+                            />
+                          </td>
+                          <td className="px-1 py-1.5 text-right">
+                            <input
+                              type="text"
+                              value={it.width_mm || ""}
+                              onChange={(e) => handleItemChange(idx, "width_mm", e.target.value)}
+                              placeholder="mm"
+                              className="w-full px-1 py-1 border border-gray-300 rounded text-right text-xs"
+                              aria-label={`Item ${idx + 1} Width`}
+                            />
+                          </td>
+                          <td className="px-1 py-1.5 text-right">
+                            <input
+                              type="text"
+                              value={it.height_mm || ""}
+                              onChange={(e) => handleItemChange(idx, "height_mm", e.target.value)}
+                              placeholder="mm"
+                              className="w-full px-1 py-1 border border-gray-300 rounded text-right text-xs"
+                              aria-label={`Item ${idx + 1} Height`}
+                            />
+                          </td>
+                          <td className="px-1 py-1.5 text-right">
+                            <input
+                              type="text"
+                              value={it.length_mm || ""}
+                              onChange={(e) => handleItemChange(idx, "length_mm", e.target.value)}
+                              placeholder="mm"
+                              className="w-full px-1 py-1 border border-gray-300 rounded text-right text-xs"
+                              aria-label={`Item ${idx + 1} Length`}
+                            />
+                          </td>
+                          <td className="px-1.5 py-1.5 text-right">
                             <input
                               type="text"
                               value={it.quantity}
                               onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
                               placeholder="1"
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-right text-xs font-bold"
+                              className="w-full px-1.5 py-1 border border-gray-300 rounded text-right text-xs font-bold"
                               aria-label={`Item ${idx + 1} quantity`}
                             />
                           </td>
-                          <td className="px-2 py-1.5">
+                          <td className="px-1.5 py-1.5">
                             <select
                               value={it.unit || "NOS"}
                               onChange={(e) => handleItemChange(idx, "unit", e.target.value)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-semibold bg-white"
+                              className="w-full px-1.5 py-1 border border-gray-300 rounded text-xs font-semibold bg-white"
                               aria-label={`Item ${idx + 1} unit`}
                             >
                               {UNIT_OPTIONS.map((u) => (
@@ -1048,17 +1169,17 @@ function EditChallanModal({
                               ))}
                             </select>
                           </td>
-                          <td className="px-2 py-1.5 text-right">
+                          <td className="px-1.5 py-1.5 text-right">
                             <input
                               type="text"
                               value={it.weight_mt || "0.000"}
                               onChange={(e) => handleItemChange(idx, "weight_mt", e.target.value)}
                               placeholder="0.000"
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-right text-xs font-mono font-semibold"
+                              className="w-full px-1.5 py-1 border border-gray-300 rounded text-right text-xs font-mono font-semibold"
                               aria-label={`Item ${idx + 1} weight in MT`}
                             />
                           </td>
-                          <td className="px-2 py-1.5 text-center">
+                          <td className="px-1 py-1.5 text-center">
                             <button
                               type="button"
                               onClick={() => removeItemRow(idx)}

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { ChallanData, ChallanItem } from "@/types/ocr";
 import { getApiBaseUrl } from "@/utils/api";
+import { applyParsedDimensions, parseSteelDescription } from "@/utils/steelParser";
 
 
 interface ChallanEditPanelProps {
@@ -75,21 +76,29 @@ function buildEWayJSON(data: ChallanData): object {
     remarks: data.remarks,
     extraFields: data.extraFields || "",
     handwrittenNotes: data.handwrittenNotes || "",
-    itemList: data.items.map((item, i) => ({
-      itemNo: String(i + 1),
-      productName: item.description,
-      productDesc: item.description,
-      hsnCode: item.itemNo,
-      quantity: item.qty,
-      qtyUnit: item.unit || "NOS",
-      unit: item.unit || "NOS",
-      weightMT: item.weightMT,
-      taxableAmount: item.taxableAmount || "0",
-      cgstRate: item.cgstRate || "9",
-      sgstRate: item.sgstRate || "9",
-      igstRate: item.igstRate || "0",
-      cessRate: "0",
-    })),
+    itemList: data.items.map((item, i) => {
+      const parsed = applyParsedDimensions(item);
+      return {
+        itemNo: String(i + 1),
+        productName: item.description,
+        productDesc: item.description,
+        hsnCode: item.itemNo,
+        materialType: parsed.materialType || "",
+        thicknessMm: parsed.thicknessMm || "",
+        widthMm: parsed.widthMm || "",
+        heightMm: parsed.heightMm || "",
+        lengthMm: parsed.lengthMm || "",
+        quantity: item.qty,
+        qtyUnit: item.unit || "NOS",
+        unit: item.unit || "NOS",
+        weightMT: item.weightMT,
+        taxableAmount: item.taxableAmount || "0",
+        cgstRate: item.cgstRate || "9",
+        sgstRate: item.sgstRate || "9",
+        igstRate: item.igstRate || "0",
+        cessRate: "0",
+      };
+    }),
     transMode: data.transMode || "1",
     vehicleType: data.vehicleType || "R",
   };
@@ -106,14 +115,57 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
     ...initialData,
     items:
       initialData.items.length > 0
-        ? initialData.items
-        : [{ slNo: "1", itemNo: "", description: "", qty: "1", unit: "NOS", weightMT: "0.000" }],
+        ? initialData.items.map((item) => applyParsedDimensions({
+            ...item,
+            materialType: item.materialType ?? "",
+            thicknessMm: item.thicknessMm ?? "",
+            widthMm: item.widthMm ?? "",
+            heightMm: item.heightMm ?? "",
+            lengthMm: item.lengthMm ?? "",
+          }))
+        : [{ slNo: "1", itemNo: "", description: "", materialType: "", thicknessMm: "", widthMm: "", heightMm: "", lengthMm: "", qty: "1", unit: "NOS", weightMT: "0.000" }],
   }));
   const [showJSON, setShowJSON] = useState(false);
   const [copiedJSON, setCopiedJSON] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState<string | null>(null);
   const [copiedExcel, setCopiedExcel] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+
+  // Synchronize state when initialData changes (e.g. OCR completes or edit target changes)
+  useEffect(() => {
+    if (!initialData) return;
+    setData({
+      ...initialData,
+      items:
+        initialData.items && initialData.items.length > 0
+          ? initialData.items.map((item) =>
+              applyParsedDimensions({
+                ...item,
+                materialType: item.materialType ?? "",
+                thicknessMm: item.thicknessMm ?? "",
+                widthMm: item.widthMm ?? "",
+                heightMm: item.heightMm ?? "",
+                lengthMm: item.lengthMm ?? "",
+              })
+            )
+          : [
+              {
+                slNo: "1",
+                itemNo: "",
+                description: "",
+                materialType: "",
+                thicknessMm: "",
+                widthMm: "",
+                heightMm: "",
+                lengthMm: "",
+                qty: "1",
+                unit: "NOS",
+                weightMT: "0.000",
+              },
+            ],
+    });
+  }, [initialData]);
 
   // AI Assistant state
   const [aiInput, setAiInput] = useState("");
@@ -132,6 +184,17 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
           (updated as any)[key] = incomingUpdates[key];
         }
       });
+      // Re-apply parser to any incoming items that may lack dimensional fields
+      if (updated.items && Array.isArray(updated.items)) {
+        updated.items = updated.items.map((item) => applyParsedDimensions({
+          ...item,
+          materialType: item.materialType ?? "",
+          thicknessMm: item.thicknessMm ?? "",
+          widthMm: item.widthMm ?? "",
+          heightMm: item.heightMm ?? "",
+          lengthMm: item.lengthMm ?? "",
+        }));
+      }
       return updated;
     });
   }, [incomingUpdates]);
@@ -148,7 +211,17 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
   const updateItem = (index: number, field: keyof ChallanItem, value: string) => {
     setData((prev) => {
       const items = [...prev.items];
-      items[index] = { ...items[index], [field]: value };
+      const updated = { ...items[index], [field]: value };
+      // When the description changes, auto-populate empty dimensional fields
+      if (field === "description") {
+        const parsed = parseSteelDescription(value);
+        if (parsed.materialType) updated.materialType = parsed.materialType;
+        if (parsed.thicknessMm)  updated.thicknessMm  = parsed.thicknessMm;
+        if (parsed.widthMm)      updated.widthMm      = parsed.widthMm;
+        if (parsed.heightMm)     updated.heightMm     = parsed.heightMm;
+        if (parsed.lengthMm)     updated.lengthMm     = parsed.lengthMm;
+      }
+      items[index] = updated;
       return { ...prev, items };
     });
   };
@@ -162,12 +235,26 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
           slNo: String(prev.items.length + 1),
           itemNo: "",
           description: "",
+          materialType: "",
+          thicknessMm: "",
+          widthMm: "",
+          heightMm: "",
+          lengthMm: "",
           qty: "1",
           unit: "NOS",
           weightMT: "0.000",
         },
       ],
     }));
+  };
+
+  const clearItems = () => {
+    setData((prev) => ({
+      ...prev,
+      items: [{ slNo: "1", itemNo: "", description: "", materialType: "", thicknessMm: "", widthMm: "", heightMm: "", lengthMm: "", qty: "1", unit: "NOS", weightMT: "0.000" }],
+      totalWeightOverride: "",
+    }));
+    setClearConfirm(false);
   };
 
   const removeItem = (index: number) => {
@@ -279,14 +366,20 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
       ["Address", data.address],
       [],
       ["--- DESCRIPTION OF GOODS ---"],
-      ["Sl.", "Item No (HSN)", "Description", "QTY", "UNIT", "Weight (MT)"],
+      ["Sl.", "Item No (HSN)", "Description", "Mat. Type", "Thickness (mm)", "Width (mm)", "Height (mm)", "Length (mm)", "QTY", "UNIT", "Weight (MT)"],
     ];
 
     data.items.forEach((item, i) => {
+      const parsed = applyParsedDimensions(item);
       rows.push([
         String(i + 1),
         item.itemNo,
         `"${item.description.replaceAll('"', '""')}"`,
+        parsed.materialType || "",
+        parsed.thicknessMm || "",
+        parsed.widthMm || "",
+        parsed.heightMm || "",
+        parsed.lengthMm || "",
         item.qty,
         item.unit,
         item.weightMT,
@@ -475,11 +568,42 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
 
         {/* ── Section 3: Description of Goods ───────────────────────── */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-200">
-            <Package className="w-3.5 h-3.5 text-gray-500" />
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
-              Description of Goods
-            </span>
+          <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+            <div className="flex items-center gap-2">
+              <Package className="w-3.5 h-3.5 text-gray-500" />
+              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                Description of Goods
+              </span>
+            </div>
+            {/* Clear Table Button */}
+            {clearConfirm ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-red-600 font-semibold">Clear all rows?</span>
+                <button
+                  type="button"
+                  onClick={clearItems}
+                  className="px-2 py-1 text-[10px] font-bold rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                >
+                  Yes, Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClearConfirm(false)}
+                  className="px-2 py-1 text-[10px] font-bold rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setClearConfirm(true)}
+                className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                Clear Table
+              </button>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-xs">
@@ -487,7 +611,12 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="goods-th w-10">Sl.</th>
                   <th className="goods-th w-28">Item No. (HSN)</th>
-                  <th className="goods-th">Description</th>
+                  <th className="goods-th min-w-[160px]">Description</th>
+                  <th className="goods-th w-24">Mat. Type</th>
+                  <th className="goods-th w-20">Thk (mm)</th>
+                  <th className="goods-th w-20">W (mm)</th>
+                  <th className="goods-th w-20">H (mm)</th>
+                  <th className="goods-th w-20">L (mm)</th>
                   <th className="goods-th w-16">QTY</th>
                   <th className="goods-th w-20">UNIT</th>
                   <th className="goods-th w-24">Weight (MT)</th>
@@ -516,6 +645,63 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         className="cell-input"
                         placeholder="Item description..."
                         aria-label={`Item ${i + 1} Description`}
+                      />
+                    </td>
+                    {/* Dimensional fields */}
+                    <td className="goods-td">
+                      <select
+                        value={item.materialType || ""}
+                        onChange={(e) => updateItem(i, "materialType", e.target.value)}
+                        className="cell-input bg-white"
+                        aria-label={`Item ${i + 1} Material Type`}
+                      >
+                        <option value="">—</option>
+                        <option value="PLATE">PLATE</option>
+                        <option value="NPB">NPB</option>
+                        <option value="ISA">ISA</option>
+                        <option value="ISMB">ISMB</option>
+                        <option value="ISMC">ISMC</option>
+                        <option value="OTHER">OTHER</option>
+                      </select>
+                    </td>
+                    <td className="goods-td">
+                      <input
+                        type="text"
+                        value={item.thicknessMm || ""}
+                        onChange={(e) => updateItem(i, "thicknessMm", e.target.value)}
+                        className="cell-input text-right"
+                        placeholder="mm"
+                        aria-label={`Item ${i + 1} Thickness`}
+                      />
+                    </td>
+                    <td className="goods-td">
+                      <input
+                        type="text"
+                        value={item.widthMm || ""}
+                        onChange={(e) => updateItem(i, "widthMm", e.target.value)}
+                        className="cell-input text-right"
+                        placeholder="mm"
+                        aria-label={`Item ${i + 1} Width`}
+                      />
+                    </td>
+                    <td className="goods-td">
+                      <input
+                        type="text"
+                        value={item.heightMm || ""}
+                        onChange={(e) => updateItem(i, "heightMm", e.target.value)}
+                        className="cell-input text-right"
+                        placeholder="mm"
+                        aria-label={`Item ${i + 1} Height/Depth`}
+                      />
+                    </td>
+                    <td className="goods-td">
+                      <input
+                        type="text"
+                        value={item.lengthMm || ""}
+                        onChange={(e) => updateItem(i, "lengthMm", e.target.value)}
+                        className="cell-input text-right"
+                        placeholder="mm"
+                        aria-label={`Item ${i + 1} Length`}
                       />
                     </td>
                     <td className="goods-td">

@@ -34,6 +34,7 @@ import {
 import { processCanvasChallan, getApiBaseUrl } from "@/utils/api";
 import { useToast } from "@/components/ToastProvider";
 import { SavedCanvasChallan, CanvasChallanData, CanvasChallanItem } from "@/types/ocr";
+import { applyParsedDimensionsCanvas, parseSteelDescription } from "@/utils/steelParser";
 
 interface CanvasScribblePanelProps {
   onBack: () => void;
@@ -58,12 +59,7 @@ const PEN_COLORS = [
   { name: "Green", value: "#16a34a", preview: "bg-emerald-600" },
 ];
 
-const STROKE_WIDTHS = [
-  { name: "Fine", value: 2 },
-  { name: "Normal", value: 3.5 },
-  { name: "Thick", value: 6 },
-  { name: "Marker", value: 10 },
-];
+
 
 export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<CanvasScribblePanelProps>) {
   const { showAlert } = useToast();
@@ -85,10 +81,11 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
   // Drawing state
   const [tool, setTool] = useState<"pen" | "eraser" | "pan">("pen");
   const [penColor, setPenColor] = useState<string>("#1d4ed8");
-  const [strokeWidth, setStrokeWidth] = useState<number>(3.5);
+  const [strokeWidth, setStrokeWidth] = useState<number>(1.5);
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
   const [undoStack, setUndoStack] = useState<ImageData[]>([]);
   const [templateLoaded, setTemplateLoaded] = useState<boolean>(false);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
   // Pan and Zoom
   const [zoom, setZoom] = useState<number>(1.0);
@@ -121,6 +118,9 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
   const [aiLoading, setAiLoading] = useState<boolean>(false);
   const [aiMessage, setAiMessage] = useState<{ type: "success" | "error" | "clarify"; text: string } | null>(null);
   const aiInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Clear table confirmation
+  const [clearTableConfirm, setClearTableConfirm] = useState<boolean>(false);
 
   // Load template image on mount
   useEffect(() => {
@@ -223,6 +223,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
   const applyDrawingContext = useCallback((ctx: CanvasRenderingContext2D) => {
     if (tool === "eraser") {
       ctx.globalCompositeOperation = "destination-out";
+      ctx.globalAlpha = 1.0;
       ctx.lineWidth = strokeWidth * 3.5;
       ctx.shadowColor = "transparent";
       ctx.shadowBlur = 0;
@@ -230,6 +231,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
       ctx.shadowOffsetY = 0;
     } else {
       ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1.0;
       ctx.strokeStyle = penColor;
       ctx.lineWidth = strokeWidth;
       ctx.lineCap = "round";
@@ -247,8 +249,39 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     ctx.shadowBlur = 0;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
+    ctx.globalAlpha = 1.0;
     ctx.globalCompositeOperation = "source-over";
   }, []);
+
+  // Helper: draw stroke segment respecting strokeWidth
+  const drawStrokeSegment = useCallback((
+    ctx: CanvasRenderingContext2D,
+    targetX: number,
+    targetY: number,
+    pressure: number
+  ) => {
+    if (tool === "pen") {
+      if (pressure > 0) {
+        ctx.lineWidth = Math.max(1.2, strokeWidth * (0.65 + pressure * 0.7));
+      } else {
+        ctx.lineWidth = strokeWidth;
+      }
+    }
+
+    if (!lastPointRef.current) {
+      ctx.lineTo(targetX, targetY);
+      ctx.stroke();
+      lastPointRef.current = { x: targetX, y: targetY };
+      return;
+    }
+
+    const prev = lastPointRef.current;
+    const midX = (prev.x + targetX) / 2;
+    const midY = (prev.y + targetY) / 2;
+    ctx.quadraticCurveTo(prev.x, prev.y, midX, midY);
+    ctx.stroke();
+    lastPointRef.current = { x: targetX, y: targetY };
+  }, [tool, strokeWidth]);
 
   // ── Pointer Events (handles stylus, mouse, and touch-based pen input) ──
   // Using pointer events ensures stylus (pointerType="pen") works correctly.
@@ -280,6 +313,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     pushUndoSnapshot();
     setIsDrawing(true);
     applyDrawingContext(ctx);
+    lastPointRef.current = { x: coords.x, y: coords.y };
 
     ctx.beginPath();
     ctx.moveTo(coords.x, coords.y);
@@ -308,13 +342,22 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
 
-    // Pressure-sensitive stroke width modulation for stylus
-    if (tool === "pen" && e.pressure > 0) {
-      ctx.lineWidth = Math.max(1.5, strokeWidth * (0.65 + e.pressure * 0.7));
-    }
+    // Use coalesced events when available for smooth digitizer tracking
+    const native = e.nativeEvent as any;
+    const coalesced = (native && typeof native.getCoalescedEvents === "function")
+      ? native.getCoalescedEvents()
+      : null;
 
-    ctx.lineTo(coords.x, coords.y);
-    ctx.stroke();
+    if (coalesced && coalesced.length > 1) {
+      for (const subEvt of coalesced) {
+        const subCoords = getCanvasCoords(subEvt);
+        if (subCoords) {
+          drawStrokeSegment(ctx, subCoords.x, subCoords.y, subEvt.pressure || 0.5);
+        }
+      }
+    } else {
+      drawStrokeSegment(ctx, coords.x, coords.y, e.pressure || 0.5);
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -325,6 +368,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     if (isDrawing && activePointerIdRef.current === e.pointerId) {
       setIsDrawing(false);
       activePointerIdRef.current = null;
+      lastPointRef.current = null;
       const canvas = inkCanvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext("2d");
@@ -358,6 +402,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     pushUndoSnapshot();
     setIsDrawing(true);
     applyDrawingContext(ctx);
+    lastPointRef.current = { x: coords.x, y: coords.y };
 
     ctx.beginPath();
     ctx.moveTo(coords.x, coords.y);
@@ -385,14 +430,14 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
 
-    ctx.lineTo(coords.x, coords.y);
-    ctx.stroke();
+    drawStrokeSegment(ctx, coords.x, coords.y, 0.5);
   };
 
   const stopDrawingMouse = () => {
     if (isPanning) setIsPanning(false);
     if (isDrawing) {
       setIsDrawing(false);
+      lastPointRef.current = null;
       const canvas = inkCanvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext("2d");
@@ -413,6 +458,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     if (e.touches.length === 2) {
       if (isDrawing) {
         setIsDrawing(false);
+        lastPointRef.current = null;
         const canvas = inkCanvasRef.current;
         if (canvas) {
           const ctx = canvas.getContext("2d");
@@ -462,6 +508,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
       pushUndoSnapshot();
       setIsDrawing(true);
       applyDrawingContext(ctx);
+      lastPointRef.current = { x: coords.x, y: coords.y };
 
       ctx.beginPath();
       ctx.moveTo(coords.x, coords.y);
@@ -523,18 +570,12 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) return;
 
-      // Stylus touch pressure modulation if available
-      if (tool === "pen") {
-        const nativeTouch = e.touches[0] as any;
-        if (nativeTouch && typeof nativeTouch.force === "number" && nativeTouch.force > 0) {
-          ctx.lineWidth = Math.max(1.5, strokeWidth * (0.65 + nativeTouch.force * 0.7));
-        } else {
-          ctx.lineWidth = strokeWidth;
-        }
-      }
+      const nativeTouch = e.touches[0] as any;
+      const pressure = (nativeTouch && typeof nativeTouch.force === "number" && nativeTouch.force > 0)
+        ? nativeTouch.force
+        : 0.5;
 
-      ctx.lineTo(coords.x, coords.y);
-      ctx.stroke();
+      drawStrokeSegment(ctx, coords.x, coords.y, pressure);
     }
   };
 
@@ -556,6 +597,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     if (isPanning) setIsPanning(false);
     if (isDrawing) {
       setIsDrawing(false);
+      lastPointRef.current = null;
       const canvas = inkCanvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext("2d");
@@ -627,15 +669,20 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
       setReviewData(response.data);
       setReviewItems(
         response.data.items && response.data.items.length > 0
-          ? response.data.items.map((it, idx) => ({
+          ? response.data.items.map((it, idx) => applyParsedDimensionsCanvas({
               sr_no: it.sr_no || String(idx + 1),
               item_no: it.item_no || "",
               description: it.description || "",
+              material_type: it.material_type || "",
+              thickness_mm: it.thickness_mm || "",
+              width_mm: it.width_mm || "",
+              height_mm: it.height_mm || "",
+              length_mm: it.length_mm || "",
               quantity: it.quantity || "",
               unit: it.unit || "NOS",
               weight_mt: it.weight_mt || "0.000",
             }))
-          : [{ sr_no: "1", item_no: "", description: "", quantity: "1", unit: "NOS", weight_mt: "0.000" }]
+          : [{ sr_no: "1", item_no: "", description: "", material_type: "", thickness_mm: "", width_mm: "", height_mm: "", length_mm: "", quantity: "1", unit: "NOS", weight_mt: "0.000" }]
       );
       setRawOcrText(response.raw_text || "");
       setReviewMode(true);
@@ -715,14 +762,22 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
       totalWeightOverride: reviewData.total_weight_override || computedWeight,
       remarks: reviewData.remarks || "",
       extraFields: reviewData.extra_fields || "",
-      itemList: reviewItems.map((it, idx) => ({
-        itemNo: String(idx + 1),
-        productDesc: it.description,
-        hsnCode: it.item_no,
-        quantity: it.quantity,
-        unit: it.unit || "NOS",
-        weightMT: it.weight_mt,
-      })),
+      itemList: reviewItems.map((it, idx) => {
+        const parsed = applyParsedDimensionsCanvas(it);
+        return {
+          itemNo: String(idx + 1),
+          productDesc: it.description,
+          hsnCode: it.item_no,
+          materialType: parsed.material_type || "",
+          thicknessMm: parsed.thickness_mm || "",
+          widthMm: parsed.width_mm || "",
+          heightMm: parsed.height_mm || "",
+          lengthMm: parsed.length_mm || "",
+          quantity: it.quantity,
+          unit: it.unit || "NOS",
+          weightMT: it.weight_mt,
+        };
+      }),
     };
   };
 
@@ -845,10 +900,15 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
 
         if (result.updates.items && Array.isArray(result.updates.items)) {
           setReviewItems(
-            result.updates.items.map((it: any, i: number) => ({
+            result.updates.items.map((it: any, i: number) => applyParsedDimensionsCanvas({
               sr_no: it.slNo || String(i + 1),
               item_no: it.itemNo || "",
               description: it.description || "",
+              material_type: it.materialType || "",
+              thickness_mm: it.thicknessMm || "",
+              width_mm: it.widthMm || "",
+              height_mm: it.heightMm || "",
+              length_mm: it.lengthMm || "",
               quantity: it.qty || "",
               unit: it.unit || "NOS",
               weight_mt: it.weightMT || "0.000",
@@ -892,6 +952,16 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
         }
       }
 
+      // When the description changes, auto-populate empty dimensional fields
+      if (field === "description") {
+        const parsed = parseSteelDescription(value);
+        if (parsed.materialType) item.material_type = parsed.materialType;
+        if (parsed.thicknessMm)  item.thickness_mm  = parsed.thicknessMm;
+        if (parsed.widthMm)      item.width_mm      = parsed.widthMm;
+        if (parsed.heightMm)     item.height_mm     = parsed.heightMm;
+        if (parsed.lengthMm)     item.length_mm     = parsed.lengthMm;
+      }
+
       updated[index] = item;
       return updated;
     });
@@ -904,11 +974,24 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
         sr_no: String(prev.length + 1),
         item_no: "",
         description: "",
+        material_type: "",
+        thickness_mm: "",
+        width_mm: "",
+        height_mm: "",
+        length_mm: "",
         quantity: "1",
         unit: "NOS",
         weight_mt: "0.000",
       },
     ]);
+  };
+
+  const clearReviewItems = () => {
+    setReviewItems([{ sr_no: "1", item_no: "", description: "", material_type: "", thickness_mm: "", width_mm: "", height_mm: "", length_mm: "", quantity: "1", unit: "NOS", weight_mt: "0.000" }]);
+    if (reviewData) {
+      setReviewData({ ...reviewData, total_weight_override: "" });
+    }
+    setClearTableConfirm(false);
   };
 
   const removeItemRow = (index: number) => {
@@ -1093,28 +1176,35 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
                 ))}
               </div>
 
-              {/* Stroke Widths */}
-              <div className="flex items-center gap-0.5 bg-gray-100 px-1 py-0.5 rounded-xl border border-gray-200 shrink-0">
-                {STROKE_WIDTHS.map((s) => (
-                  <button
-                    key={s.value}
-                    type="button"
-                    onClick={() => setStrokeWidth(s.value)}
-                    className={`px-2 py-1 rounded text-[11px] font-semibold transition-all ${
-                      strokeWidth === s.value
-                        ? "bg-white text-gray-900 shadow-sm font-bold"
-                        : "text-gray-500 hover:text-gray-800"
-                    }`}
-                  >
-                    {s.name}
-                  </button>
-                ))}
+              {/* Size Slider Control (matches reference image: label, slider, and preview circle) */}
+              <div className="flex items-center bg-[#252528] text-white px-3 py-1 rounded-xl shadow-xs border border-gray-700/60 shrink-0 gap-2.5 h-8">
+                <span className="text-xs font-semibold text-gray-200 select-none">Size</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="24"
+                  step="0.5"
+                  value={strokeWidth}
+                  onChange={(e) => setStrokeWidth(Number.parseFloat(e.target.value))}
+                  className="w-20 sm:w-28 h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-[#60a5fa]"
+                  title={`Pen Size: ${strokeWidth}px`}
+                />
+                <div className="w-px h-5 bg-white/20 mx-0.5" />
+                <div className="w-6 h-6 flex items-center justify-center shrink-0" title={`Preview: ${strokeWidth}px`}>
+                  <div
+                    className="rounded-full bg-white transition-all shadow-xs"
+                    style={{
+                      width: `${Math.max(2, Math.min(22, strokeWidth))}px`,
+                      height: `${Math.max(2, Math.min(22, strokeWidth))}px`,
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Stylus Pen Shading Badge */}
               <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 font-semibold shadow-2xs shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
-                <span>Stylus Pen Shading</span>
+                <span>Stylus Pen ({strokeWidth}px)</span>
               </div>
             </div>
           )}
@@ -1259,6 +1349,37 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
                         <span>Eraser</span>
                       </button>
                     </div>
+
+                    {/* Size Slider in Fullscreen */}
+                    {tool === "pen" && (
+                      <div className="p-2.5 bg-[#252528] text-white rounded-xl border border-gray-700/60">
+                        <div className="flex items-center justify-between text-xs font-semibold text-gray-300 mb-1.5">
+                          <span>Size</span>
+                          <span className="font-mono text-[#60a5fa]">{strokeWidth}px</span>
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="range"
+                            min="1"
+                            max="24"
+                            step="0.5"
+                            value={strokeWidth}
+                            onChange={(e) => setStrokeWidth(Number.parseFloat(e.target.value))}
+                            className="flex-1 h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-[#60a5fa]"
+                          />
+                          <div className="w-px h-5 bg-white/20" />
+                          <div className="w-6 h-6 flex items-center justify-center shrink-0">
+                            <div
+                              className="rounded-full bg-white transition-all shadow-xs"
+                              style={{
+                                width: `${Math.max(2, Math.min(22, strokeWidth))}px`,
+                                height: `${Math.max(2, Math.min(22, strokeWidth))}px`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="h-px bg-gray-100 my-1" />
 
@@ -1685,14 +1806,45 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
                       Description of Goods ({reviewItems.length})
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={addItemRow}
-                    className="flex items-center gap-1 text-xs font-bold text-[#1a237e] bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1 rounded-lg transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add Item Row
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/* Clear Table Button */}
+                    {clearTableConfirm ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-red-600 font-semibold">Clear all rows?</span>
+                        <button
+                          type="button"
+                          onClick={clearReviewItems}
+                          className="px-2 py-1 text-[10px] font-bold rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                        >
+                          Yes, Clear
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setClearTableConfirm(false)}
+                          className="px-2 py-1 text-[10px] font-bold rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setClearTableConfirm(true)}
+                        className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Clear Table
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={addItemRow}
+                      className="flex items-center gap-1 text-xs font-bold text-[#1a237e] bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1 rounded-lg transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Item Row
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1701,7 +1853,12 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
                       <tr>
                         <th className="px-3 py-2.5 w-12 text-center">Sl.</th>
                         <th className="px-3 py-2.5 w-28">Item No. (HSN)</th>
-                        <th className="px-3 py-2.5 min-w-[200px]">Description of Goods</th>
+                        <th className="px-3 py-2.5 min-w-[160px]">Description of Goods</th>
+                        <th className="px-2 py-2.5 w-24">Mat. Type</th>
+                        <th className="px-2 py-2.5 w-20">Thk (mm)</th>
+                        <th className="px-2 py-2.5 w-20">W (mm)</th>
+                        <th className="px-2 py-2.5 w-20">H (mm)</th>
+                        <th className="px-2 py-2.5 w-20">L (mm)</th>
                         <th className="px-3 py-2.5 w-20 text-right">QTY</th>
                         <th className="px-3 py-2.5 w-24">UNIT</th>
                         <th className="px-3 py-2.5 w-28 text-right">Weight (MT)</th>
@@ -1738,6 +1895,63 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
                               onChange={(e) => handleItemChange(idx, "description", e.target.value)}
                               placeholder="e.g. M.S. PLATE 25MM THK"
                               className="w-full px-2.5 py-1 border border-gray-300 rounded text-xs font-medium"
+                            />
+                          </td>
+                          {/* Dimensional fields */}
+                          <td className="px-2 py-2">
+                            <select
+                              aria-label={`Item ${idx + 1} material type`}
+                              value={item.material_type || ""}
+                              onChange={(e) => handleItemChange(idx, "material_type", e.target.value)}
+                              className="w-full px-1.5 py-1 border border-gray-300 rounded text-xs font-semibold bg-white"
+                            >
+                              <option value="">—</option>
+                              <option value="PLATE">PLATE</option>
+                              <option value="NPB">NPB</option>
+                              <option value="ISA">ISA</option>
+                              <option value="ISMB">ISMB</option>
+                              <option value="ISMC">ISMC</option>
+                              <option value="OTHER">OTHER</option>
+                            </select>
+                          </td>
+                          <td className="px-2 py-2">
+                            <input
+                              type="text"
+                              aria-label={`Item ${idx + 1} thickness`}
+                              value={item.thickness_mm || ""}
+                              onChange={(e) => handleItemChange(idx, "thickness_mm", e.target.value)}
+                              placeholder="mm"
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-right text-xs font-mono"
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <input
+                              type="text"
+                              aria-label={`Item ${idx + 1} width`}
+                              value={item.width_mm || ""}
+                              onChange={(e) => handleItemChange(idx, "width_mm", e.target.value)}
+                              placeholder="mm"
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-right text-xs font-mono"
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <input
+                              type="text"
+                              aria-label={`Item ${idx + 1} height`}
+                              value={item.height_mm || ""}
+                              onChange={(e) => handleItemChange(idx, "height_mm", e.target.value)}
+                              placeholder="mm"
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-right text-xs font-mono"
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <input
+                              type="text"
+                              aria-label={`Item ${idx + 1} length`}
+                              value={item.length_mm || ""}
+                              onChange={(e) => handleItemChange(idx, "length_mm", e.target.value)}
+                              placeholder="mm"
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-right text-xs font-mono"
                             />
                           </td>
                           <td className="px-2 py-2 text-right">

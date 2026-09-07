@@ -109,6 +109,11 @@ class CanvasChallanItem(BaseModel):
     sr_no: Optional[str] = "1"
     item_no: Optional[str] = ""
     description: Optional[str] = ""
+    material_type: Optional[str] = ""   # PLATE, NPB, ISA, ISMB, ISMC, OTHER
+    thickness_mm: Optional[str] = ""    # e.g. "8", "50"
+    width_mm: Optional[str] = ""        # e.g. "1250"
+    height_mm: Optional[str] = ""       # depth for sections e.g. "350"
+    length_mm: Optional[str] = ""       # e.g. "6300", "12000"
     quantity: Optional[str] = ""
     unit: Optional[str] = "NOS"
     weight_mt: Optional[str] = "0.000"

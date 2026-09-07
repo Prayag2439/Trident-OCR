@@ -44,6 +44,11 @@ export interface InvoiceItem {
   productName: string;
   productDesc: string;
   hsnCode: string;
+  materialType?: string;
+  thicknessMm?: string;
+  widthMm?: string;
+  heightMm?: string;
+  lengthMm?: string;
   quantity: string;
   qtyUnit: string;
   taxableAmount: string;
@@ -106,6 +111,11 @@ export interface ChallanItem {
   slNo: string;
   itemNo: string;        // HSN code
   description: string;
+  materialType?: string; // PLATE, NPB, ISA, ISMB, ISMC, OTHER
+  thicknessMm?: string;  // e.g. "8", "50"
+  widthMm?: string;      // e.g. "1250"
+  heightMm?: string;     // depth for sections e.g. "350"
+  lengthMm?: string;     // e.g. "6300", "12000"
   qty: string;
   unit: string;          // NOS, MT, KG, etc.
   weightMT: string;      // weight in MT
@@ -187,6 +197,11 @@ export interface CanvasChallanItem {
   sr_no: string;
   item_no?: string;
   description: string;
+  material_type?: string; // PLATE, NPB, ISA, ISMB, ISMC, OTHER
+  thickness_mm?: string;  // e.g. "8", "50"
+  width_mm?: string;      // e.g. "1250"
+  height_mm?: string;     // depth for sections e.g. "350"
+  length_mm?: string;     // e.g. "6300", "12000"
   quantity: string;
   unit?: string;
   weight_mt?: string;

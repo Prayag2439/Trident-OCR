@@ -25,6 +25,7 @@ import {
   SavedCanvasChallan,
   AuthUser,
 } from "@/types/ocr";
+import { applyParsedDimensions } from "@/utils/steelParser";
 
 // ─── Helper: Map OCR result → ChallanData ─────────────────────────────────
 
@@ -36,7 +37,8 @@ const GARBLED_PHRASES = [
   "transcribe all",
   "return only the transcribed",
   "ocr content extracted",
-  "section #",
+  "document type:",
+  "instruction:",
 ];
 function sanitize(val: string | undefined): string {
   if (!val) return "";
@@ -59,10 +61,15 @@ function mapOCRtoChallan(
       const mtMatch = /[-–]\s*(\d+\.?\d*)\s*MT\b/i.exec(desc);
       if (mtMatch) wt = Number.parseFloat(mtMatch[1]).toFixed(3);
     }
-    return {
+    return applyParsedDimensions({
       slNo: String(i + 1),
       itemNo: sanitize(item.hsnCode) || "",
       description: desc,
+      materialType: item.materialType || "",
+      thicknessMm: item.thicknessMm || "",
+      widthMm: item.widthMm || "",
+      heightMm: item.heightMm || "",
+      lengthMm: item.lengthMm || "",
       qty: item.quantity || "1",
       unit: (item as any).unit || item.qtyUnit || "NOS",
       weightMT: wt,
@@ -70,7 +77,7 @@ function mapOCRtoChallan(
       cgstRate: item.cgstRate || "9",
       sgstRate: item.sgstRate || "9",
       igstRate: item.igstRate || "0",
-    };
+    });
   });
 
   const computedWeight = items

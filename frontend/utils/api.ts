@@ -6,6 +6,18 @@ export function getApiBaseUrl(): string {
     if (custom && custom.trim()) {
       return custom.trim().replace(/\/+$/, "");
     }
+    const isCapacitor = !!(window as any).Capacitor?.isNativePlatform?.();
+    const hostname = window.location.hostname;
+    // When accessing from a browser on local network (e.g. 192.168.x.x, 10.x.x.x, localhost in dev):
+    if (!isCapacitor && (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      /^192\.168\./.test(hostname) ||
+      /^10\./.test(hostname) ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)
+    )) {
+      return `http://${hostname}:8000`;
+    }
   }
   const envUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
   if (envUrl && envUrl.trim()) {
