@@ -6,7 +6,7 @@ export type RegionClass =
   | "Text"
   | "Table"
   | "Header"
-  | string;
+  | (string & {});
 
 export interface ExtractedRegion {
   region_id: string;
@@ -30,7 +30,7 @@ export interface DocumentMeta {
   filename: string;
   pages: number;
   dpi_normalized: number;
-  model_used: "gpt-5" | "gemini" | string;
+  model_used: "gpt-5" | "gemini" | (string & {});
   is_digital_pdf: boolean;
   processing_time_ms?: number;
   page_width?: number;
@@ -44,6 +44,11 @@ export interface InvoiceItem {
   productName: string;
   productDesc: string;
   hsnCode: string;
+  materialType?: string;
+  thicknessMm?: string;
+  widthMm?: string;
+  heightMm?: string;
+  lengthMm?: string;
   quantity: string;
   qtyUnit: string;
   taxableAmount: string;
@@ -106,6 +111,11 @@ export interface ChallanItem {
   slNo: string;
   itemNo: string;        // HSN code
   description: string;
+  materialType?: string; // PLATE, NPB, ISA, ISMB, ISMC, OTHER
+  thicknessMm?: string;  // e.g. "8", "50"
+  widthMm?: string;      // e.g. "1250"
+  heightMm?: string;     // depth for sections e.g. "350"
+  lengthMm?: string;     // e.g. "6300", "12000"
   qty: string;
   unit: string;          // NOS, MT, KG, etc.
   weightMT: string;      // weight in MT
@@ -163,10 +173,92 @@ export interface ChallanData {
   token_usage?: TokenUsage;
 }
 
+export interface AuthUser {
+  id?: number;
+  email: string;
+  name: string;
+  role: "admin" | "employee" | (string & {});
+}
+
 export interface SavedChallan {
   id: string;
   savedAt: string;
   previewImageBase64?: string;
-  source?: "manual" | "upload" | "voice";
+  source?: "manual" | "upload" | "voice" | "scribble";
+  userId?: string;
+  creatorName?: string;
+  role?: string;
   data: ChallanData;
 }
+
+// ─── Canvas Scribble types ──────────────────────────────────────────────────
+
+export interface CanvasChallanItem {
+  sr_no: string;
+  item_no?: string;
+  description: string;
+  material_type?: string; // PLATE, NPB, ISA, ISMB, ISMC, OTHER
+  thickness_mm?: string;  // e.g. "8", "50"
+  width_mm?: string;      // e.g. "1250"
+  height_mm?: string;     // depth for sections e.g. "350"
+  length_mm?: string;     // e.g. "6300", "12000"
+  quantity: string;
+  unit?: string;
+  weight_mt?: string;
+}
+
+export interface CanvasChallanData {
+  challan_no: string;
+  date: string;
+  your_order_no: string;
+  order_date: string;
+  vehicle_no?: string;
+  eway_bill_no?: string;
+  party_name: string;
+  address: string;
+  gstin: string;
+  items: CanvasChallanItem[];
+  computed_weight_mt?: string;
+  total_weight_override?: string;
+  total_value_incl_tax?: string;
+  remarks?: string;
+  extra_fields?: string;
+  customer_signature: string;
+  authorised_signatory: string;
+}
+
+export interface SavedCanvasChallan {
+  id: string;
+  challan_no: string;
+  date: string;
+  your_order_no: string;
+  order_date: string;
+  vehicle_no?: string;
+  eway_bill_no?: string;
+  party_name: string;
+  address: string;
+  gstin: string;
+  items: CanvasChallanItem[];
+  computed_weight_mt?: string;
+  total_weight_override?: string;
+  total_value_incl_tax?: string;
+  remarks?: string;
+  extra_fields?: string;
+  customer_signature: string;
+  authorised_signatory: string;
+  preview_image_base64?: string;
+  raw_ocr_text?: string;
+  user_id?: string;
+  role?: string;
+  creator_name?: string;
+  saved_at: string;
+}
+
+export interface CanvasProcessResponse {
+  success: boolean;
+  data: CanvasChallanData;
+  preview_image_base64?: string;
+  raw_text?: string;
+  saved_record?: SavedCanvasChallan;
+}
+

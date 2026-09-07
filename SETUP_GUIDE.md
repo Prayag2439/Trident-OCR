@@ -53,7 +53,7 @@ The backend is powered by Python. It's highly recommended to use a virtual envir
    ```
 4. Start the backend server:
    ```bash
-   uvicorn main:app --reload
+   uvicorn main:app --reload --host 0.0.0.0 --port 8000
    ```
    The backend API will now be running at `http://localhost:8000`. You can view the interactive API documentation at `http://localhost:8000/docs`.
 
@@ -71,11 +71,14 @@ The frontend is powered by Next.js and requires Node.js.
 3. Start the frontend development server:
    ```bash
    npm run dev
+   # or with explicit --host flag:
+   npm run dev -- --host
    ```
 
 ## Step 5: Start Using Trident
 Open your web browser and go to:
-**[http://localhost:3000](http://localhost:3000)**
+- **Local:** `http://localhost:3000`
+- **Network / IP:** `http://<your-ip>:3000` (e.g. `http://192.168.1.87:3000`)
 
 You should now see the Trident interactive UI!
 

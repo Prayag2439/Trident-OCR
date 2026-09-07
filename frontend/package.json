@@ -3,12 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "node dev.js",
+    "dev:host": "node dev.js --host",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "next start -H 0.0.0.0 -p 3000",
+    "lint": "next lint",
+    "cap:build": "node build-cap.js",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
     "clsx": "^2.1.1",
     "framer-motion": "^11.3.19",
     "lucide-react": "^0.417.0",

@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import {
   Plus,
   Trash2,
-  Save,
   Copy,
   Check,
   Send,
@@ -13,6 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  Printer,
   ArrowLeft,
   FileText,
   Truck,
@@ -22,6 +22,9 @@ import {
   Loader2,
 } from "lucide-react";
 import { ChallanData, ChallanItem } from "@/types/ocr";
+import { getApiBaseUrl } from "@/utils/api";
+import { applyParsedDimensions, parseSteelDescription } from "@/utils/steelParser";
+
 
 interface ChallanEditPanelProps {
   initialData: ChallanData;
@@ -73,24 +76,38 @@ function buildEWayJSON(data: ChallanData): object {
     remarks: data.remarks,
     extraFields: data.extraFields || "",
     handwrittenNotes: data.handwrittenNotes || "",
-    itemList: data.items.map((item, i) => ({
-      itemNo: String(i + 1),
-      productName: item.description,
-      productDesc: item.description,
-      hsnCode: item.itemNo,
-      quantity: item.qty,
-      qtyUnit: item.unit || "NOS",
-      unit: item.unit || "NOS",
-      weightMT: item.weightMT,
-      taxableAmount: item.taxableAmount || "0",
-      cgstRate: item.cgstRate || "9",
-      sgstRate: item.sgstRate || "9",
-      igstRate: item.igstRate || "0",
-      cessRate: "0",
-    })),
+    itemList: data.items.map((item, i) => {
+      const parsed = applyParsedDimensions(item);
+      return {
+        itemNo: String(i + 1),
+        productName: item.description,
+        productDesc: item.description,
+        hsnCode: item.itemNo,
+        materialType: parsed.materialType || "",
+        thicknessMm: parsed.thicknessMm || "",
+        widthMm: parsed.widthMm || "",
+        heightMm: parsed.heightMm || "",
+        lengthMm: parsed.lengthMm || "",
+        quantity: item.qty,
+        qtyUnit: item.unit || "NOS",
+        unit: item.unit || "NOS",
+        weightMT: item.weightMT,
+        taxableAmount: item.taxableAmount || "0",
+        cgstRate: item.cgstRate || "9",
+        sgstRate: item.sgstRate || "9",
+        igstRate: item.igstRate || "0",
+        cessRate: "0",
+      };
+    }),
     transMode: data.transMode || "1",
     vehicleType: data.vehicleType || "R",
   };
+}
+
+function getAiMessageClass(type: string): string {
+  if (type === "success") return "bg-green-50 text-green-700 border border-green-200";
+  if (type === "clarify") return "bg-amber-50 text-amber-700 border border-amber-200";
+  return "bg-red-50 text-red-700 border border-red-200";
 }
 
 export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomingUpdates, onDataChange }: ChallanEditPanelProps) {
@@ -98,14 +115,57 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
     ...initialData,
     items:
       initialData.items.length > 0
-        ? initialData.items
-        : [{ slNo: "1", itemNo: "", description: "", qty: "1", unit: "NOS", weightMT: "0.000" }],
+        ? initialData.items.map((item) => applyParsedDimensions({
+            ...item,
+            materialType: item.materialType ?? "",
+            thicknessMm: item.thicknessMm ?? "",
+            widthMm: item.widthMm ?? "",
+            heightMm: item.heightMm ?? "",
+            lengthMm: item.lengthMm ?? "",
+          }))
+        : [{ slNo: "1", itemNo: "", description: "", materialType: "", thicknessMm: "", widthMm: "", heightMm: "", lengthMm: "", qty: "1", unit: "NOS", weightMT: "0.000" }],
   }));
   const [showJSON, setShowJSON] = useState(false);
   const [copiedJSON, setCopiedJSON] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState<string | null>(null);
   const [copiedExcel, setCopiedExcel] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+
+  // Synchronize state when initialData changes (e.g. OCR completes or edit target changes)
+  useEffect(() => {
+    if (!initialData) return;
+    setData({
+      ...initialData,
+      items:
+        initialData.items && initialData.items.length > 0
+          ? initialData.items.map((item) =>
+              applyParsedDimensions({
+                ...item,
+                materialType: item.materialType ?? "",
+                thicknessMm: item.thicknessMm ?? "",
+                widthMm: item.widthMm ?? "",
+                heightMm: item.heightMm ?? "",
+                lengthMm: item.lengthMm ?? "",
+              })
+            )
+          : [
+              {
+                slNo: "1",
+                itemNo: "",
+                description: "",
+                materialType: "",
+                thicknessMm: "",
+                widthMm: "",
+                heightMm: "",
+                lengthMm: "",
+                qty: "1",
+                unit: "NOS",
+                weightMT: "0.000",
+              },
+            ],
+    });
+  }, [initialData]);
 
   // AI Assistant state
   const [aiInput, setAiInput] = useState("");
@@ -113,7 +173,6 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
   const [aiMessage, setAiMessage] = useState<{ type: "success" | "error" | "clarify"; text: string } | null>(null);
   const aiInputRef = useRef<HTMLInputElement>(null);
 
-  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
   // Merge incoming updates from Voice Assistant or AI
   useEffect(() => {
@@ -125,6 +184,17 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
           (updated as any)[key] = incomingUpdates[key];
         }
       });
+      // Re-apply parser to any incoming items that may lack dimensional fields
+      if (updated.items && Array.isArray(updated.items)) {
+        updated.items = updated.items.map((item) => applyParsedDimensions({
+          ...item,
+          materialType: item.materialType ?? "",
+          thicknessMm: item.thicknessMm ?? "",
+          widthMm: item.widthMm ?? "",
+          heightMm: item.heightMm ?? "",
+          lengthMm: item.lengthMm ?? "",
+        }));
+      }
       return updated;
     });
   }, [incomingUpdates]);
@@ -141,7 +211,17 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
   const updateItem = (index: number, field: keyof ChallanItem, value: string) => {
     setData((prev) => {
       const items = [...prev.items];
-      items[index] = { ...items[index], [field]: value };
+      const updated = { ...items[index], [field]: value };
+      // When the description changes, auto-populate empty dimensional fields
+      if (field === "description") {
+        const parsed = parseSteelDescription(value);
+        if (parsed.materialType) updated.materialType = parsed.materialType;
+        if (parsed.thicknessMm)  updated.thicknessMm  = parsed.thicknessMm;
+        if (parsed.widthMm)      updated.widthMm      = parsed.widthMm;
+        if (parsed.heightMm)     updated.heightMm     = parsed.heightMm;
+        if (parsed.lengthMm)     updated.lengthMm     = parsed.lengthMm;
+      }
+      items[index] = updated;
       return { ...prev, items };
     });
   };
@@ -155,12 +235,26 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
           slNo: String(prev.items.length + 1),
           itemNo: "",
           description: "",
+          materialType: "",
+          thicknessMm: "",
+          widthMm: "",
+          heightMm: "",
+          lengthMm: "",
           qty: "1",
           unit: "NOS",
           weightMT: "0.000",
         },
       ],
     }));
+  };
+
+  const clearItems = () => {
+    setData((prev) => ({
+      ...prev,
+      items: [{ slNo: "1", itemNo: "", description: "", materialType: "", thicknessMm: "", widthMm: "", heightMm: "", lengthMm: "", qty: "1", unit: "NOS", weightMT: "0.000" }],
+      totalWeightOverride: "",
+    }));
+    setClearConfirm(false);
   };
 
   const removeItem = (index: number) => {
@@ -173,7 +267,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
   };
 
   const computedWeight = data.items
-    .reduce((sum, item) => sum + parseFloat(item.weightMT || "0"), 0)
+    .reduce((sum, item) => sum + Number.parseFloat(item.weightMT || "0"), 0)
     .toFixed(3);
 
   const finalJSON = buildEWayJSON(data);
@@ -207,7 +301,8 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
       formData.append("instruction", aiInput.trim());
       formData.append("challan_state", JSON.stringify(data));
 
-      const res = await fetch(`${BACKEND_URL}/api/v1/assistant/text`, {
+      const backendUrl = getApiBaseUrl();
+      const res = await fetch(`${backendUrl}/api/v1/assistant/text`, {
         method: "POST",
         body: formData,
       });
@@ -246,7 +341,8 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
         setAiMessage({ type: "clarify", text: "I didn't find a recognizable instruction. Could you rephrase?" });
       }
     } catch {
-      setAiMessage({ type: "error", text: "⚠️ Could not reach the server. Please check the backend is running." });
+      const backendUrl = getApiBaseUrl();
+      setAiMessage({ type: "error", text: `⚠️ Could not reach server at ${backendUrl}. Please check network connection.` });
     } finally {
       setAiLoading(false);
       setTimeout(() => setAiMessage(null), 6000);
@@ -270,14 +366,20 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
       ["Address", data.address],
       [],
       ["--- DESCRIPTION OF GOODS ---"],
-      ["Sl.", "Item No (HSN)", "Description", "QTY", "UNIT", "Weight (MT)"],
+      ["Sl.", "Item No (HSN)", "Description", "Mat. Type", "Thickness (mm)", "Width (mm)", "Height (mm)", "Length (mm)", "QTY", "UNIT", "Weight (MT)"],
     ];
 
     data.items.forEach((item, i) => {
+      const parsed = applyParsedDimensions(item);
       rows.push([
         String(i + 1),
         item.itemNo,
-        `"${item.description.replace(/"/g, '""')}"`,
+        `"${item.description.replaceAll('"', '""')}"`,
+        parsed.materialType || "",
+        parsed.thicknessMm || "",
+        parsed.widthMm || "",
+        parsed.heightMm || "",
+        parsed.lengthMm || "",
         item.qty,
         item.unit,
         item.weightMT,
@@ -291,7 +393,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
       ["Total Value Incl. Tax (₹)", data.totalValueInclTax],
       [],
       ["--- REMARKS / TERMS ---"],
-      ["Remarks", `"${data.remarks.replace(/"/g, '""')}"`]
+      ["Remarks", `"${data.remarks.replaceAll('"', '""')}"`]
     );
 
     const csvContent = "\uFEFF" + rows.map((r) => r.join(",")).join("\r\n");
@@ -299,10 +401,10 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `challan_${data.challanNo.replace(/\//g, "-")}.csv`);
+    link.setAttribute("download", `challan_${data.challanNo.replaceAll("/", "-")}.csv`);
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
 
     setCopiedExcel(true);
     setTimeout(() => setCopiedExcel(false), 2500);
@@ -312,35 +414,37 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
     <div className="h-full flex flex-col bg-[#f5f6fa] font-sans overflow-hidden">
 
       {/* ── Page Header: "EDIT CHALLAN" ──────────────────────────────────── */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <h1 className="text-xl font-black text-gray-900 tracking-tight">EDIT CHALLAN</h1>
-        <div className="flex items-center gap-2">
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+          <h1 className="text-base sm:text-xl font-black text-gray-900 tracking-tight truncate">EDIT CHALLAN</h1>
           {data.challanNo && (
-            <span className="px-3 py-1.5 rounded-lg bg-[#1a237e] text-white text-xs font-bold tracking-wide">
+            <span className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-[#1a237e] text-white text-[10px] sm:text-xs font-bold tracking-wide shrink-0">
               {data.challanNo}
             </span>
           )}
+        </div>
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={() => onView(data)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+            className="flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors shrink-0"
           >
             <Eye className="w-3.5 h-3.5" />
-            View
+            <span>View</span>
           </button>
           <button
             type="button"
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+            className="flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors shrink-0"
           >
             {copiedExcel ? <Check className="w-3.5 h-3.5" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
-            {copiedExcel ? "Exported!" : "Export CSV"}
+            <span>{copiedExcel ? "Exported!" : "Export CSV"}</span>
           </button>
         </div>
       </div>
 
       {/* ── Scrollable Form Body ──────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 space-y-3 sm:space-y-4">
 
         {/* ── Section 1: Challan Details ─────────────────────────────── */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -350,55 +454,65 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
               Challan Details
             </span>
           </div>
-          <div className="p-4 grid grid-cols-3 gap-3">
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="field-label">Challan No.</label>
+              <label htmlFor="edit-challan-no" className="field-label">Challan No.</label>
               <input
+                id="edit-challan-no"
                 type="text"
                 value={data.challanNo}
                 onChange={(e) => updateField("challanNo", e.target.value)}
                 className="field-input"
                 placeholder="e.g. TFPL/08/2026-27/4"
+                aria-label="Challan Number"
               />
             </div>
             <div>
-              <label className="field-label">Date</label>
+              <label htmlFor="edit-challan-date" className="field-label">Date</label>
               <input
+                id="edit-challan-date"
                 type="text"
                 value={data.date}
                 onChange={(e) => updateField("date", e.target.value)}
                 className="field-input"
                 placeholder="DD/MM/YYYY"
+                aria-label="Challan Date"
               />
             </div>
             <div>
-              <label className="field-label">Your Order No.</label>
+              <label htmlFor="edit-order-no" className="field-label">Your Order No.</label>
               <input
+                id="edit-order-no"
                 type="text"
                 value={data.yourOrderNo}
                 onChange={(e) => updateField("yourOrderNo", e.target.value)}
                 className="field-input"
                 placeholder="Recipient PO / Order No."
+                aria-label="Your Order Number"
               />
             </div>
             <div>
-              <label className="field-label">Vehicle No.</label>
+              <label htmlFor="edit-vehicle-no" className="field-label">Vehicle No.</label>
               <input
+                id="edit-vehicle-no"
                 type="text"
                 value={data.vehicleNo}
                 onChange={(e) => updateField("vehicleNo", e.target.value)}
                 className="field-input"
                 placeholder="e.g. OD 15 XXXX"
+                aria-label="Vehicle Number"
               />
             </div>
-            <div className="col-span-2">
-              <label className="field-label">E-Way Bill No. (if already generated)</label>
+            <div className="col-span-1 sm:col-span-2">
+              <label htmlFor="edit-eway-no" className="field-label">E-Way Bill No. (if already generated)</label>
               <input
+                id="edit-eway-no"
                 type="text"
                 value={data.ewayBillNo}
                 onChange={(e) => updateField("ewayBillNo", e.target.value)}
                 className="field-input"
                 placeholder="—"
+                aria-label="E-Way Bill Number"
               />
             </div>
           </div>
@@ -412,35 +526,41 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
               Consignee (To)
             </span>
           </div>
-          <div className="p-4 grid grid-cols-2 gap-3">
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="field-label">Party Name</label>
+              <label htmlFor="edit-party-name" className="field-label">Party Name</label>
               <input
+                id="edit-party-name"
                 type="text"
                 value={data.partyName}
                 onChange={(e) => updateField("partyName", e.target.value)}
                 className="field-input"
                 placeholder="Recipient company name"
+                aria-label="Party Name"
               />
             </div>
             <div>
-              <label className="field-label">GSTIN</label>
+              <label htmlFor="edit-gstin" className="field-label">GSTIN</label>
               <input
+                id="edit-gstin"
                 type="text"
                 value={data.gstin}
                 onChange={(e) => updateField("gstin", e.target.value)}
                 className="field-input"
                 placeholder="15-char GSTIN"
+                aria-label="Consignee GSTIN"
               />
             </div>
-            <div className="col-span-2">
-              <label className="field-label">Address</label>
+            <div className="col-span-1 sm:col-span-2">
+              <label htmlFor="edit-address" className="field-label">Address</label>
               <input
+                id="edit-address"
                 type="text"
                 value={data.address}
                 onChange={(e) => updateField("address", e.target.value)}
                 className="field-input"
                 placeholder="Full delivery address"
+                aria-label="Consignee Address"
               />
             </div>
           </div>
@@ -448,11 +568,42 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
 
         {/* ── Section 3: Description of Goods ───────────────────────── */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-200">
-            <Package className="w-3.5 h-3.5 text-gray-500" />
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
-              Description of Goods
-            </span>
+          <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+            <div className="flex items-center gap-2">
+              <Package className="w-3.5 h-3.5 text-gray-500" />
+              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                Description of Goods
+              </span>
+            </div>
+            {/* Clear Table Button */}
+            {clearConfirm ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-red-600 font-semibold">Clear all rows?</span>
+                <button
+                  type="button"
+                  onClick={clearItems}
+                  className="px-2 py-1 text-[10px] font-bold rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                >
+                  Yes, Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClearConfirm(false)}
+                  className="px-2 py-1 text-[10px] font-bold rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setClearConfirm(true)}
+                className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                Clear Table
+              </button>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-xs">
@@ -460,7 +611,12 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="goods-th w-10">Sl.</th>
                   <th className="goods-th w-28">Item No. (HSN)</th>
-                  <th className="goods-th">Description</th>
+                  <th className="goods-th min-w-[160px]">Description</th>
+                  <th className="goods-th w-24">Mat. Type</th>
+                  <th className="goods-th w-20">Thk (mm)</th>
+                  <th className="goods-th w-20">W (mm)</th>
+                  <th className="goods-th w-20">H (mm)</th>
+                  <th className="goods-th w-20">L (mm)</th>
                   <th className="goods-th w-16">QTY</th>
                   <th className="goods-th w-20">UNIT</th>
                   <th className="goods-th w-24">Weight (MT)</th>
@@ -469,7 +625,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
               </thead>
               <tbody>
                 {data.items.map((item, i) => (
-                  <tr key={i} className="border-b border-gray-100 hover:bg-blue-50/40 transition-colors">
+                  <tr key={item.slNo ? `item-sl-${item.slNo}` : `item-row-${item.itemNo}-${item.description}`} className="border-b border-gray-100 hover:bg-blue-50/40 transition-colors">
                     <td className="goods-td text-center text-gray-400">{i + 1}</td>
                     <td className="goods-td">
                       <input
@@ -478,6 +634,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         onChange={(e) => updateItem(i, "itemNo", e.target.value)}
                         className="cell-input"
                         placeholder="HSN code"
+                        aria-label={`Item ${i + 1} HSN code`}
                       />
                     </td>
                     <td className="goods-td">
@@ -487,6 +644,64 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         onChange={(e) => updateItem(i, "description", e.target.value)}
                         className="cell-input"
                         placeholder="Item description..."
+                        aria-label={`Item ${i + 1} Description`}
+                      />
+                    </td>
+                    {/* Dimensional fields */}
+                    <td className="goods-td">
+                      <select
+                        value={item.materialType || ""}
+                        onChange={(e) => updateItem(i, "materialType", e.target.value)}
+                        className="cell-input bg-white"
+                        aria-label={`Item ${i + 1} Material Type`}
+                      >
+                        <option value="">—</option>
+                        <option value="PLATE">PLATE</option>
+                        <option value="NPB">NPB</option>
+                        <option value="ISA">ISA</option>
+                        <option value="ISMB">ISMB</option>
+                        <option value="ISMC">ISMC</option>
+                        <option value="OTHER">OTHER</option>
+                      </select>
+                    </td>
+                    <td className="goods-td">
+                      <input
+                        type="text"
+                        value={item.thicknessMm || ""}
+                        onChange={(e) => updateItem(i, "thicknessMm", e.target.value)}
+                        className="cell-input text-right"
+                        placeholder="mm"
+                        aria-label={`Item ${i + 1} Thickness`}
+                      />
+                    </td>
+                    <td className="goods-td">
+                      <input
+                        type="text"
+                        value={item.widthMm || ""}
+                        onChange={(e) => updateItem(i, "widthMm", e.target.value)}
+                        className="cell-input text-right"
+                        placeholder="mm"
+                        aria-label={`Item ${i + 1} Width`}
+                      />
+                    </td>
+                    <td className="goods-td">
+                      <input
+                        type="text"
+                        value={item.heightMm || ""}
+                        onChange={(e) => updateItem(i, "heightMm", e.target.value)}
+                        className="cell-input text-right"
+                        placeholder="mm"
+                        aria-label={`Item ${i + 1} Height/Depth`}
+                      />
+                    </td>
+                    <td className="goods-td">
+                      <input
+                        type="text"
+                        value={item.lengthMm || ""}
+                        onChange={(e) => updateItem(i, "lengthMm", e.target.value)}
+                        className="cell-input text-right"
+                        placeholder="mm"
+                        aria-label={`Item ${i + 1} Length`}
                       />
                     </td>
                     <td className="goods-td">
@@ -496,6 +711,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         onChange={(e) => updateItem(i, "qty", e.target.value)}
                         className="cell-input text-center"
                         placeholder="1"
+                        aria-label={`Item ${i + 1} Quantity`}
                       />
                     </td>
                     <td className="goods-td">
@@ -503,6 +719,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         value={item.unit}
                         onChange={(e) => updateItem(i, "unit", e.target.value)}
                         className="cell-input bg-white"
+                        aria-label={`Item ${i + 1} Unit`}
                       >
                         {UNIT_OPTIONS.map((u) => (
                           <option key={u} value={u}>{u}</option>
@@ -516,6 +733,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         onChange={(e) => updateItem(i, "weightMT", e.target.value)}
                         className="cell-input text-right"
                         placeholder="0.000"
+                        aria-label={`Item ${i + 1} Weight in MT`}
                       />
                     </td>
                     <td className="goods-td text-center">
@@ -523,6 +741,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         type="button"
                         onClick={() => removeItem(i)}
                         className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                        aria-label={`Remove item ${i + 1}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -546,31 +765,35 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
           </div>
 
           {/* Totals row */}
-          <div className="grid grid-cols-3 border-t border-gray-200">
-            <div className="px-4 py-3 bg-gray-50 border-r border-gray-200">
+          <div className="grid grid-cols-1 sm:grid-cols-3 border-t border-gray-200">
+            <div className="px-4 py-3 bg-gray-50 border-b sm:border-b-0 sm:border-r border-gray-200">
               <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-0.5">
                 Computed Weight
               </p>
               <p className="text-2xl font-black text-gray-900">{computedWeight} <span className="text-sm font-bold text-gray-500">MT</span></p>
             </div>
-            <div className="px-4 py-3 border-r border-gray-200">
-              <label className="field-label">Total Weight Override (Optional)</label>
+            <div className="px-4 py-3 border-b sm:border-b-0 sm:border-r border-gray-200">
+              <label htmlFor="edit-weight-override" className="field-label">Total Weight Override (Optional)</label>
               <input
+                id="edit-weight-override"
                 type="text"
                 value={data.totalWeightOverride}
                 onChange={(e) => updateField("totalWeightOverride", e.target.value)}
                 className="field-input mt-1"
                 placeholder={computedWeight}
+                aria-label="Total Weight Override"
               />
             </div>
             <div className="px-4 py-3">
-              <label className="field-label">Total Value Incl. Tax (₹)</label>
+              <label htmlFor="edit-total-value" className="field-label">Total Value Incl. Tax (₹)</label>
               <input
+                id="edit-total-value"
                 type="text"
                 value={data.totalValueInclTax}
                 onChange={(e) => updateField("totalValueInclTax", e.target.value)}
                 className="field-input mt-1"
                 placeholder="0"
+                aria-label="Total Value Including Tax"
               />
             </div>
           </div>
@@ -585,12 +808,15 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
             </span>
           </div>
           <div className="p-4">
+            <label htmlFor="edit-remarks" className="field-label">Additional notes / Remarks / Terms</label>
             <textarea
+              id="edit-remarks"
               value={data.remarks}
               onChange={(e) => updateField("remarks", e.target.value)}
               rows={3}
-              className="field-input resize-none"
+              className="field-input resize-none mt-1"
               placeholder="e.g. Above mentioned material issued to G.P. Engg for job work basis on returnable basis. Not for sale."
+              aria-label="Remarks and terms"
             />
             {data.extraFields && (
               <div className="mt-2 p-3 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-700">
@@ -629,20 +855,14 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                 type="button"
                 onClick={handleAiSubmit}
                 disabled={aiLoading || !aiInput.trim()}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                {aiLoading ? "…" : "Send"}
+                <span>{aiLoading ? "…" : "Send"}</span>
               </button>
             </div>
             {aiMessage && (
-              <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-medium ${
-                aiMessage.type === "success"
-                  ? "bg-green-50 text-green-700 border border-green-200"
-                  : aiMessage.type === "clarify"
-                  ? "bg-amber-50 text-amber-700 border border-amber-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
-              }`}>
+              <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-medium ${getAiMessageClass(aiMessage.type)}`}>
                 {aiMessage.text}
               </div>
             )}
@@ -675,26 +895,26 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 px-3 sm:px-4 py-2.5 sm:py-3">
             <button
               type="button"
               onClick={handleCopyJSON}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors shadow-sm shrink-0"
             >
               {copiedJSON ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-              {copiedJSON ? "Copied!" : "Copy JSON"}
+              <span>{copiedJSON ? "Copied!" : "Copy JSON"}</span>
             </button>
             <button
               type="button"
               onClick={handleSendAPI}
               disabled={sending}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors shadow disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors shadow disabled:opacity-50 shrink-0"
             >
               <Send className="w-3.5 h-3.5" />
-              {sending ? "Sending…" : "Send via API"}
+              <span>{sending ? "Sending…" : "Send via API"}</span>
             </button>
             {sendStatus && (
-              <span className={`text-xs font-medium ${sendStatus.startsWith("✓") ? "text-green-600" : "text-red-500"}`}>
+              <span className={`text-xs font-medium w-full sm:w-auto text-right ${sendStatus.startsWith("✓") ? "text-green-600" : "text-red-500"}`}>
                 {sendStatus}
               </span>
             )}
@@ -704,23 +924,35 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
       </div>
 
       {/* ── Sticky Footer: Cancel + Save ─────────────────────────────────── */}
-      <div className="flex-shrink-0 bg-white border-t border-gray-200 px-5 py-3 flex items-center justify-between">
+      <div className="flex-shrink-0 bg-white border-t border-gray-200 px-3 sm:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-1.5 sm:gap-2">
         <button
           type="button"
           onClick={onCancel}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+          className="flex items-center justify-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors shrink-0 h-9 sm:h-10"
         >
-          <ArrowLeft className="w-4 h-4" />
-          Cancel
+          <ArrowLeft className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+          <span>Cancel</span>
         </button>
-        <button
-          type="button"
-          onClick={() => onSave({ ...data, computedWeightMT: computedWeight })}
-          className="flex items-center gap-1.5 px-5 py-2 text-sm font-bold rounded-lg bg-[#1a237e] text-white hover:bg-[#283593] transition-colors shadow"
-        >
-          <Check className="w-4 h-4" />
-          Save challan
-        </button>
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => onView({ ...data, computedWeightMT: computedWeight })}
+            className="flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs shrink-0 h-9 sm:h-10"
+          >
+            <Printer className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+            <span className="hidden sm:inline">Print / Preview</span>
+            <span className="sm:hidden">Print</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave({ ...data, computedWeightMT: computedWeight })}
+            className="flex items-center justify-center gap-1 sm:gap-1.5 px-3 sm:px-5 py-2 text-xs sm:text-sm font-bold rounded-lg bg-[#1a237e] text-white hover:bg-[#283593] transition-colors shadow shrink-0 h-9 sm:h-10"
+          >
+            <Check className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+            <span className="hidden sm:inline">Save challan</span>
+            <span className="sm:hidden">Save</span>
+          </button>
+        </div>
       </div>
 
       {/* Scoped styles */}

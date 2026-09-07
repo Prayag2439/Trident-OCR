@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic import BaseModel, Field
 
 class TokenUsage(BaseModel):
@@ -99,3 +99,81 @@ class ProcessResponse(BaseModel):
 
     class Config:
         populate_by_name = True
+
+
+# ==============================================================================
+# Canvas Scribble Models
+# ==============================================================================
+
+class CanvasChallanItem(BaseModel):
+    sr_no: Optional[str] = "1"
+    item_no: Optional[str] = ""
+    description: Optional[str] = ""
+    material_type: Optional[str] = ""   # PLATE, NPB, ISA, ISMB, ISMC, OTHER
+    thickness_mm: Optional[str] = ""    # e.g. "8", "50"
+    width_mm: Optional[str] = ""        # e.g. "1250"
+    height_mm: Optional[str] = ""       # depth for sections e.g. "350"
+    length_mm: Optional[str] = ""       # e.g. "6300", "12000"
+    quantity: Optional[str] = ""
+    unit: Optional[str] = "NOS"
+    weight_mt: Optional[str] = "0.000"
+
+    class Config:
+        extra = "ignore"
+
+class CanvasChallanData(BaseModel):
+    challan_no: Optional[str] = ""
+    date: Optional[str] = ""
+    your_order_no: Optional[str] = ""
+    order_date: Optional[str] = ""
+    vehicle_no: Optional[str] = ""
+    eway_bill_no: Optional[str] = ""
+    party_name: Optional[str] = ""
+    address: Optional[str] = ""
+    gstin: Optional[str] = ""
+    items: List[CanvasChallanItem] = []
+    computed_weight_mt: Optional[str] = "0.000"
+    total_weight_override: Optional[str] = ""
+    total_value_incl_tax: Optional[str] = ""
+    remarks: Optional[str] = ""
+    extra_fields: Optional[str] = ""
+    customer_signature: Optional[str] = ""
+    authorised_signatory: Optional[str] = ""
+
+    class Config:
+        extra = "ignore"
+
+class CanvasProcessRequest(BaseModel):
+    image_base64: str
+    user_id: Optional[Union[str, int]] = "admin@optimo.com"
+    role: Optional[str] = "admin"
+    creator_name: Optional[str] = "Admin"
+
+class CanvasProcessResponse(BaseModel):
+    success: bool
+    data: CanvasChallanData
+    preview_image_base64: Optional[str] = None
+    raw_text: Optional[str] = ""
+    saved_record: Optional[dict] = None
+
+class CanvasChallanUpdate(BaseModel):
+    challan_no: Optional[str] = None
+    date: Optional[str] = None
+    your_order_no: Optional[str] = None
+    order_date: Optional[str] = None
+    vehicle_no: Optional[str] = None
+    eway_bill_no: Optional[str] = None
+    party_name: Optional[str] = None
+    address: Optional[str] = None
+    gstin: Optional[str] = None
+    items: Optional[List[CanvasChallanItem]] = None
+    computed_weight_mt: Optional[str] = None
+    total_weight_override: Optional[str] = None
+    total_value_incl_tax: Optional[str] = None
+    remarks: Optional[str] = None
+    extra_fields: Optional[str] = None
+    customer_signature: Optional[str] = None
+    authorised_signatory: Optional[str] = None
+    preview_image_base64: Optional[str] = None
+    saved_at: Optional[str] = None
+

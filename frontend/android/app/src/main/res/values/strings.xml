@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Trident Fabricators</string>
+    <string name="title_activity_main">Trident Fabricators</string>
+    <string name="package_name">com.optimo360.challan</string>
+    <string name="custom_url_scheme">com.optimo360.challan</string>
+</resources>

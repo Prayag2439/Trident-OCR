@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { X, Printer } from "lucide-react";
 import { ChallanData } from "@/types/ocr";
+import { applyParsedDimensions } from "@/utils/steelParser";
 
 interface ChallanPrintViewProps {
   data: ChallanData;
@@ -204,25 +205,38 @@ export function ChallanPrintView({ data, onClose }: ChallanPrintViewProps) {
             <table className="w-full border-collapse text-[10px]">
               <thead>
                 <tr className="bg-gray-100">
-                  <th className="border border-gray-300 px-2 py-1.5 text-left font-bold text-[9px] uppercase">Sl.</th>
-                  <th className="border border-gray-300 px-2 py-1.5 text-left font-bold text-[9px] uppercase">Item No. (HSN)</th>
+                  <th className="border border-gray-300 px-1.5 py-1.5 text-center font-bold text-[9px] uppercase">Sl.</th>
+                  <th className="border border-gray-300 px-1.5 py-1.5 text-left font-bold text-[9px] uppercase">Item No. (HSN)</th>
                   <th className="border border-gray-300 px-2 py-1.5 text-left font-bold text-[9px] uppercase">Description</th>
-                  <th className="border border-gray-300 px-2 py-1.5 text-center font-bold text-[9px] uppercase">QTY</th>
-                  <th className="border border-gray-300 px-2 py-1.5 text-center font-bold text-[9px] uppercase">UNIT</th>
+                  <th className="border border-gray-300 px-1.5 py-1.5 text-center font-bold text-[9px] uppercase">Mat. Type</th>
+                  <th className="border border-gray-300 px-1.5 py-1.5 text-right font-bold text-[9px] uppercase">Thk (mm)</th>
+                  <th className="border border-gray-300 px-1.5 py-1.5 text-right font-bold text-[9px] uppercase">W (mm)</th>
+                  <th className="border border-gray-300 px-1.5 py-1.5 text-right font-bold text-[9px] uppercase">H (mm)</th>
+                  <th className="border border-gray-300 px-1.5 py-1.5 text-right font-bold text-[9px] uppercase">L (mm)</th>
+                  <th className="border border-gray-300 px-1.5 py-1.5 text-center font-bold text-[9px] uppercase">QTY</th>
+                  <th className="border border-gray-300 px-1.5 py-1.5 text-center font-bold text-[9px] uppercase">UNIT</th>
                   <th className="border border-gray-300 px-2 py-1.5 text-right font-bold text-[9px] uppercase">Weight (MT)</th>
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((item, i) => (
-                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                    <td className="border border-gray-300 px-2 py-1 text-center text-gray-500">{i + 1}</td>
-                    <td className="border border-gray-300 px-2 py-1 font-mono font-bold text-[#1a237e]">{item.itemNo}</td>
-                    <td className="border border-gray-300 px-2 py-1">{item.description}</td>
-                    <td className="border border-gray-300 px-2 py-1 text-center font-bold">{item.qty}</td>
-                    <td className="border border-gray-300 px-2 py-1 text-center">{item.unit}</td>
-                    <td className="border border-gray-300 px-2 py-1 text-right font-bold font-mono">{item.weightMT}</td>
-                  </tr>
-                ))}
+                {data.items.map((item, i) => {
+                  const parsed = applyParsedDimensions(item);
+                  return (
+                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                      <td className="border border-gray-300 px-1.5 py-1 text-center text-gray-500">{i + 1}</td>
+                      <td className="border border-gray-300 px-1.5 py-1 font-mono font-bold text-[#1a237e]">{item.itemNo || "—"}</td>
+                      <td className="border border-gray-300 px-2 py-1">{item.description}</td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-center font-semibold">{parsed.materialType || "—"}</td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-right font-mono">{parsed.thicknessMm || "—"}</td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-right font-mono">{parsed.widthMm || "—"}</td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-right font-mono">{parsed.heightMm || "—"}</td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-right font-mono">{parsed.lengthMm || "—"}</td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-center font-bold">{item.qty}</td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-center">{item.unit}</td>
+                      <td className="border border-gray-300 px-2 py-1 text-right font-bold font-mono">{item.weightMT}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 
