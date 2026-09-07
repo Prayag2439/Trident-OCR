@@ -79,6 +79,8 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
   const twoFingerDistanceStartRef = useRef<number>(0);
   const twoFingerZoomStartRef = useRef<number>(1.0);
   const justFinishedTwoFingerPanRef = useRef<boolean>(false);
+  // Track active pointer ID for stylus/pen input
+  const activePointerIdRef = useRef<number | null>(null);
 
   // Drawing state
   const [tool, setTool] = useState<"pen" | "eraser" | "pan">("pen");
@@ -191,7 +193,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
   }, [pushUndoSnapshot, showAlert]);
 
   // Helper: map touch or mouse coordinates to canvas native (814 x 1024) coordinates
-  const getCanvasCoords = (e: React.MouseEvent | React.TouchEvent): { x: number; y: number } | null => {
+  const getCanvasCoords = (e: React.MouseEvent | React.TouchEvent | React.PointerEvent): { x: number; y: number } | null => {
     const canvas = inkCanvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -204,8 +206,8 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
       clientX = e.touches[0].clientX;
       clientY = e.touches[0].clientY;
     } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
+      clientX = (e as React.MouseEvent | React.PointerEvent).clientX;
+      clientY = (e as React.MouseEvent | React.PointerEvent).clientY;
     }
 
     const scaleX = TEMPLATE_WIDTH / rect.width;
@@ -217,8 +219,128 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     };
   };
 
-  // Mouse drawing handlers
+  // Helper: apply drawing context settings (pen or eraser)
+  const applyDrawingContext = useCallback((ctx: CanvasRenderingContext2D) => {
+    if (tool === "eraser") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.lineWidth = strokeWidth * 3.5;
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = penColor;
+      ctx.lineWidth = strokeWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.shadowColor = penColor;
+      ctx.shadowBlur = Math.max(1, strokeWidth * 0.45);
+      ctx.shadowOffsetX = 0.4;
+      ctx.shadowOffsetY = 0.4;
+    }
+  }, [tool, penColor, strokeWidth]);
+
+  // Helper: reset shadow state on canvas context to prevent zoom "spots"
+  const resetContextShadow = useCallback((ctx: CanvasRenderingContext2D) => {
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.globalCompositeOperation = "source-over";
+  }, []);
+
+  // ── Pointer Events (handles stylus, mouse, and touch-based pen input) ──
+  // Using pointer events ensures stylus (pointerType="pen") works correctly.
+  // We capture the pointer to keep receiving events even outside the element.
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Only handle stylus (pen) and mouse here; touch is handled by touch events
+    if (e.pointerType === "touch") return;
+
+    e.preventDefault();
+
+    if (tool === "pan") {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
+
+    const coords = getCanvasCoords(e);
+    if (!coords) return;
+
+    const canvas = inkCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    activePointerIdRef.current = e.pointerId;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+    pushUndoSnapshot();
+    setIsDrawing(true);
+    applyDrawingContext(ctx);
+
+    ctx.beginPath();
+    ctx.moveTo(coords.x, coords.y);
+    ctx.lineTo(coords.x + 0.1, coords.y + 0.1);
+    ctx.stroke();
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    e.preventDefault();
+
+    if (tool === "pan" && isPanning) {
+      setPanOffset({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y,
+      });
+      return;
+    }
+
+    if (!isDrawing || activePointerIdRef.current !== e.pointerId) return;
+    const coords = getCanvasCoords(e);
+    if (!coords) return;
+
+    const canvas = inkCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    // Pressure-sensitive stroke width modulation for stylus
+    if (tool === "pen" && e.pressure > 0) {
+      ctx.lineWidth = Math.max(1.5, strokeWidth * (0.65 + e.pressure * 0.7));
+    }
+
+    ctx.lineTo(coords.x, coords.y);
+    ctx.stroke();
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    e.preventDefault();
+
+    if (isPanning) setIsPanning(false);
+    if (isDrawing && activePointerIdRef.current === e.pointerId) {
+      setIsDrawing(false);
+      activePointerIdRef.current = null;
+      const canvas = inkCanvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.closePath();
+          resetContextShadow(ctx);
+        }
+      }
+    }
+  };
+
+  // Mouse drawing handlers (fallback for non-touch, non-stylus desktop)
   const startDrawingMouse = (e: React.MouseEvent) => {
+    // Skip if pointer events already handled this (stylus/mouse via pointer events)
+    if ((e.nativeEvent as any).pointerType && (e.nativeEvent as any).pointerType !== "touch") return;
+
     if (tool === "pan") {
       setIsPanning(true);
       setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
@@ -235,26 +357,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
 
     pushUndoSnapshot();
     setIsDrawing(true);
-
-    if (tool === "eraser") {
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.lineWidth = strokeWidth * 3.5;
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = penColor;
-      ctx.lineWidth = strokeWidth;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      // Authentic Stylus / Ballpoint Pen Shading
-      ctx.shadowColor = penColor;
-      ctx.shadowBlur = Math.max(1, strokeWidth * 0.45);
-      ctx.shadowOffsetX = 0.4;
-      ctx.shadowOffsetY = 0.4;
-    }
+    applyDrawingContext(ctx);
 
     ctx.beginPath();
     ctx.moveTo(coords.x, coords.y);
@@ -263,6 +366,8 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
   };
 
   const drawMouse = (e: React.MouseEvent) => {
+    if ((e.nativeEvent as any).pointerType && (e.nativeEvent as any).pointerType !== "touch") return;
+
     if (tool === "pan" && isPanning) {
       setPanOffset({
         x: e.clientX - panStart.x,
@@ -280,16 +385,6 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
 
-    // Stylus pressure-sensitive stroke width modulation
-    if (tool === "pen") {
-      const native = e.nativeEvent as any;
-      if (native && typeof native.pressure === "number" && native.pressure > 0) {
-        ctx.lineWidth = Math.max(1.5, strokeWidth * (0.65 + native.pressure * 0.7));
-      } else {
-        ctx.lineWidth = strokeWidth;
-      }
-    }
-
     ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
   };
@@ -301,13 +396,19 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
       const canvas = inkCanvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext("2d");
-        ctx?.closePath();
+        if (ctx) {
+          ctx.closePath();
+          resetContextShadow(ctx);
+        }
       }
     }
   };
 
   // Mobile Touch Handlers with 2-Finger Pinch Zoom In / Out & Pan Recognition
   const handleTouchStart = (e: React.TouchEvent) => {
+    // Prevent default to stop browser tap-selection and native scroll interfering
+    e.preventDefault();
+
     // 2-Finger Pinch Zoom + Pan gesture
     if (e.touches.length === 2) {
       if (isDrawing) {
@@ -315,7 +416,10 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
         const canvas = inkCanvasRef.current;
         if (canvas) {
           const ctx = canvas.getContext("2d");
-          ctx?.closePath();
+          if (ctx) {
+            ctx.closePath();
+            resetContextShadow(ctx);
+          }
         }
       }
       isTwoFingerPanningRef.current = true;
@@ -357,26 +461,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
 
       pushUndoSnapshot();
       setIsDrawing(true);
-
-      if (tool === "eraser") {
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.lineWidth = strokeWidth * 3.5;
-        ctx.shadowColor = "transparent";
-        ctx.shadowBlur = 0;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
-      } else {
-        ctx.globalCompositeOperation = "source-over";
-        ctx.strokeStyle = penColor;
-        ctx.lineWidth = strokeWidth;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        // Authentic Stylus / Ballpoint Pen Shading
-        ctx.shadowColor = penColor;
-        ctx.shadowBlur = Math.max(1, strokeWidth * 0.45);
-        ctx.shadowOffsetX = 0.4;
-        ctx.shadowOffsetY = 0.4;
-      }
+      applyDrawingContext(ctx);
 
       ctx.beginPath();
       ctx.moveTo(coords.x, coords.y);
@@ -386,6 +471,8 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+
     // Two-finger Pinch Zoom In / Out + Drag / Moving
     if (e.touches.length === 2) {
       const touch0 = e.touches[0];
@@ -452,6 +539,8 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault();
+
     if (isTwoFingerPanningRef.current) {
       if (e.touches.length < 2) {
         isTwoFingerPanningRef.current = false;
@@ -470,7 +559,10 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
       const canvas = inkCanvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext("2d");
-        ctx?.closePath();
+        if (ctx) {
+          ctx.closePath();
+          resetContextShadow(ctx);
+        }
       }
     }
   };
@@ -1231,6 +1323,10 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
           onMouseMove={drawMouse}
           onMouseUp={stopDrawingMouse}
           onMouseLeave={stopDrawingMouse}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
