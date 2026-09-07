@@ -17,7 +17,11 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const viewport: Viewport = {
   themeColor: "#1a237e",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
+
 
 export const metadata: Metadata = {
   title: "Optimo Challan Console",

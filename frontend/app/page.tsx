@@ -475,32 +475,32 @@ export default function Home() {
   }
 
   return (
-    <main className="flex-1 flex flex-col min-h-screen">
+    <main className="flex-1 flex flex-col min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
       {/* ── Top Navigation Bar (always visible) ──────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-4 md:px-6 py-2.5 shadow-xs">
-        <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-4">
+      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-3 sm:px-6 py-2 shadow-xs w-full max-w-full">
+        <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-2 sm:gap-4 w-full min-w-0">
           {/* Left: Trident Logo branding */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <img
               src="/trident-logo.png"
               alt="Trident"
-              style={{ height: 38, width: "auto" }}
+              style={{ height: 32, width: "auto" }}
               className="object-contain"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           </div>
 
           {/* Center: Challan & Despatch aligned to center and increased size */}
-          <div className="flex-1 flex justify-center text-center">
-            <h1 className="text-base sm:text-xl md:text-2xl font-black tracking-wider text-[#1a237e] uppercase drop-shadow-xs">
+          <div className="hidden sm:flex flex-1 justify-center text-center min-w-0">
+            <h1 className="text-base sm:text-xl md:text-2xl font-black tracking-wider text-[#1a237e] uppercase drop-shadow-xs truncate">
               Challan &amp; Despatch
             </h1>
           </div>
 
           {/* Right side: actions based on view */}
-          <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 ml-auto">
             {currentUser && (
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-xs shadow-xs">
+              <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-xs shadow-xs">
                 <span className="font-bold text-gray-800">{currentUser.name}</span>
                 <span
                   className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
@@ -518,27 +518,28 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleBackToDashboard}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                Back to Dashboard
+                <span className="hidden sm:inline">Back</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={handleLogout}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all ml-1"
+              title="Logout"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all"
             >
               <LogOut className="w-3.5 h-3.5" />
-              Logout
+              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
         </div>
       </header>
 
       {/* ── Main Content ──────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col bg-white">
+      <div className="flex-1 flex flex-col bg-white w-full max-w-full min-w-0">
 
         {/* VIEW: Dashboard */}
         {appView === "dashboard" && (

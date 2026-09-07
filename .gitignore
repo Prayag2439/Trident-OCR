@@ -3,6 +3,7 @@
 # ==============================================================================
 
 # ── Environments & Local Overrides ──
+.env
 .env.local
 .env.*.local
 .env.staging.local
@@ -72,3 +73,10 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# ── Mobile & Android Build Artifacts ──
+*.apk
+*.aab
+Trident-Fabricators.apk
+frontend/.env.production
+

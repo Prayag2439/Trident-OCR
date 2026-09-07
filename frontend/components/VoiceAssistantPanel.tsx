@@ -4,8 +4,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Mic, MicOff, Loader2, Bot, User, ChevronDown, ChevronUp } from "lucide-react";
 
 import { ChallanData } from "@/types/ocr";
+import { getApiBaseUrl } from "@/utils/api";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ── Voice Activity Detection (VAD) config ─────────────────────────────────────
 // RMS amplitude (0–1) below which audio is considered silence
@@ -127,7 +127,8 @@ export function VoiceAssistantPanel({ currentData, onApplyUpdates }: Readonly<Vo
           formData.append("partial_context", continueFromContext);
         }
 
-        const res = await fetch(`${BACKEND_URL}/api/v1/assistant/voice`, {
+        const backendUrl = getApiBaseUrl();
+        const res = await fetch(`${backendUrl}/api/v1/assistant/voice`, {
           method: "POST",
           body: formData,
         });
@@ -180,7 +181,8 @@ export function VoiceAssistantPanel({ currentData, onApplyUpdates }: Readonly<Vo
           addMessage("assistant", "I didn't find any challan fields in that. Could you rephrase?");
         }
       } catch {
-        addMessage("assistant", "⚠️ Could not reach the server. Please check the backend is running.");
+        const backendUrl = getApiBaseUrl();
+        addMessage("assistant", `⚠️ Could not reach server at ${backendUrl}. Please check network connection.`);
         pendingContextRef.current = "";
       } finally {
         setRecordingState("idle");

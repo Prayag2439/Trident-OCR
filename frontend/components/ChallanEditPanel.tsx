@@ -22,6 +22,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { ChallanData, ChallanItem } from "@/types/ocr";
+import { getApiBaseUrl } from "@/utils/api";
+
 
 interface ChallanEditPanelProps {
   initialData: ChallanData;
@@ -119,7 +121,6 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
   const [aiMessage, setAiMessage] = useState<{ type: "success" | "error" | "clarify"; text: string } | null>(null);
   const aiInputRef = useRef<HTMLInputElement>(null);
 
-  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
   // Merge incoming updates from Voice Assistant or AI
   useEffect(() => {
@@ -213,7 +214,8 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
       formData.append("instruction", aiInput.trim());
       formData.append("challan_state", JSON.stringify(data));
 
-      const res = await fetch(`${BACKEND_URL}/api/v1/assistant/text`, {
+      const backendUrl = getApiBaseUrl();
+      const res = await fetch(`${backendUrl}/api/v1/assistant/text`, {
         method: "POST",
         body: formData,
       });
@@ -252,7 +254,8 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
         setAiMessage({ type: "clarify", text: "I didn't find a recognizable instruction. Could you rephrase?" });
       }
     } catch {
-      setAiMessage({ type: "error", text: "⚠️ Could not reach the server. Please check the backend is running." });
+      const backendUrl = getApiBaseUrl();
+      setAiMessage({ type: "error", text: `⚠️ Could not reach server at ${backendUrl}. Please check network connection.` });
     } finally {
       setAiLoading(false);
       setTimeout(() => setAiMessage(null), 6000);
@@ -318,35 +321,37 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
     <div className="h-full flex flex-col bg-[#f5f6fa] font-sans overflow-hidden">
 
       {/* ── Page Header: "EDIT CHALLAN" ──────────────────────────────────── */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <h1 className="text-xl font-black text-gray-900 tracking-tight">EDIT CHALLAN</h1>
-        <div className="flex items-center gap-2">
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+          <h1 className="text-base sm:text-xl font-black text-gray-900 tracking-tight truncate">EDIT CHALLAN</h1>
           {data.challanNo && (
-            <span className="px-3 py-1.5 rounded-lg bg-[#1a237e] text-white text-xs font-bold tracking-wide">
+            <span className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-[#1a237e] text-white text-[10px] sm:text-xs font-bold tracking-wide shrink-0">
               {data.challanNo}
             </span>
           )}
+        </div>
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={() => onView(data)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+            className="flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors shrink-0"
           >
             <Eye className="w-3.5 h-3.5" />
-            View
+            <span>View</span>
           </button>
           <button
             type="button"
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+            className="flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors shrink-0"
           >
             {copiedExcel ? <Check className="w-3.5 h-3.5" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
-            {copiedExcel ? "Exported!" : "Export CSV"}
+            <span>{copiedExcel ? "Exported!" : "Export CSV"}</span>
           </button>
         </div>
       </div>
 
       {/* ── Scrollable Form Body ──────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 space-y-3 sm:space-y-4">
 
         {/* ── Section 1: Challan Details ─────────────────────────────── */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -356,7 +361,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
               Challan Details
             </span>
           </div>
-          <div className="p-4 grid grid-cols-3 gap-3">
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label htmlFor="edit-challan-no" className="field-label">Challan No.</label>
               <input
@@ -405,7 +410,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                 aria-label="Vehicle Number"
               />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-1 sm:col-span-2">
               <label htmlFor="edit-eway-no" className="field-label">E-Way Bill No. (if already generated)</label>
               <input
                 id="edit-eway-no"
@@ -428,7 +433,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
               Consignee (To)
             </span>
           </div>
-          <div className="p-4 grid grid-cols-2 gap-3">
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label htmlFor="edit-party-name" className="field-label">Party Name</label>
               <input
@@ -453,7 +458,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                 aria-label="Consignee GSTIN"
               />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-1 sm:col-span-2">
               <label htmlFor="edit-address" className="field-label">Address</label>
               <input
                 id="edit-address"
@@ -574,14 +579,14 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
           </div>
 
           {/* Totals row */}
-          <div className="grid grid-cols-3 border-t border-gray-200">
-            <div className="px-4 py-3 bg-gray-50 border-r border-gray-200">
+          <div className="grid grid-cols-1 sm:grid-cols-3 border-t border-gray-200">
+            <div className="px-4 py-3 bg-gray-50 border-b sm:border-b-0 sm:border-r border-gray-200">
               <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-0.5">
                 Computed Weight
               </p>
               <p className="text-2xl font-black text-gray-900">{computedWeight} <span className="text-sm font-bold text-gray-500">MT</span></p>
             </div>
-            <div className="px-4 py-3 border-r border-gray-200">
+            <div className="px-4 py-3 border-b sm:border-b-0 sm:border-r border-gray-200">
               <label htmlFor="edit-weight-override" className="field-label">Total Weight Override (Optional)</label>
               <input
                 id="edit-weight-override"
@@ -664,10 +669,10 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                 type="button"
                 onClick={handleAiSubmit}
                 disabled={aiLoading || !aiInput.trim()}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                {aiLoading ? "…" : "Send"}
+                <span>{aiLoading ? "…" : "Send"}</span>
               </button>
             </div>
             {aiMessage && (
@@ -704,26 +709,26 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 px-3 sm:px-4 py-2.5 sm:py-3">
             <button
               type="button"
               onClick={handleCopyJSON}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors shadow-sm shrink-0"
             >
               {copiedJSON ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-              {copiedJSON ? "Copied!" : "Copy JSON"}
+              <span>{copiedJSON ? "Copied!" : "Copy JSON"}</span>
             </button>
             <button
               type="button"
               onClick={handleSendAPI}
               disabled={sending}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors shadow disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors shadow disabled:opacity-50 shrink-0"
             >
               <Send className="w-3.5 h-3.5" />
-              {sending ? "Sending…" : "Send via API"}
+              <span>{sending ? "Sending…" : "Send via API"}</span>
             </button>
             {sendStatus && (
-              <span className={`text-xs font-medium ${sendStatus.startsWith("✓") ? "text-green-600" : "text-red-500"}`}>
+              <span className={`text-xs font-medium w-full sm:w-auto text-right ${sendStatus.startsWith("✓") ? "text-green-600" : "text-red-500"}`}>
                 {sendStatus}
               </span>
             )}
@@ -733,31 +738,33 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
       </div>
 
       {/* ── Sticky Footer: Cancel + Save ─────────────────────────────────── */}
-      <div className="flex-shrink-0 bg-white border-t border-gray-200 px-5 py-3 flex items-center justify-between">
+      <div className="flex-shrink-0 bg-white border-t border-gray-200 px-3 sm:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-1.5 sm:gap-2">
         <button
           type="button"
           onClick={onCancel}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+          className="flex items-center justify-center gap-1 sm:gap-1.5 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors shrink-0 h-9 sm:h-10"
         >
-          <ArrowLeft className="w-4 h-4" />
-          Cancel
+          <ArrowLeft className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+          <span>Cancel</span>
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={() => onView({ ...data, computedWeightMT: computedWeight })}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs"
+            className="flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs shrink-0 h-9 sm:h-10"
           >
-            <Printer className="w-4 h-4" />
-            Print / Preview
+            <Printer className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+            <span className="hidden sm:inline">Print / Preview</span>
+            <span className="sm:hidden">Print</span>
           </button>
           <button
             type="button"
             onClick={() => onSave({ ...data, computedWeightMT: computedWeight })}
-            className="flex items-center gap-1.5 px-5 py-2 text-sm font-bold rounded-lg bg-[#1a237e] text-white hover:bg-[#283593] transition-colors shadow"
+            className="flex items-center justify-center gap-1 sm:gap-1.5 px-3 sm:px-5 py-2 text-xs sm:text-sm font-bold rounded-lg bg-[#1a237e] text-white hover:bg-[#283593] transition-colors shadow shrink-0 h-9 sm:h-10"
           >
-            <Check className="w-4 h-4" />
-            Save challan
+            <Check className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+            <span className="hidden sm:inline">Save challan</span>
+            <span className="sm:hidden">Save</span>
           </button>
         </div>
       </div>

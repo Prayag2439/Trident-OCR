@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.optimo360.challan',
-  appName: 'Optimo Challan',
+  appName: 'Trident Fabricators',
   webDir: 'out',
   server: {
     androidScheme: 'http',

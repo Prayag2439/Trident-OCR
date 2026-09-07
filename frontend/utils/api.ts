@@ -1,13 +1,32 @@
 import { SavedChallan, SavedCanvasChallan, CanvasProcessResponse } from "@/types/ocr";
 
 export function getApiBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+  if (typeof window !== "undefined") {
+    const custom = localStorage.getItem("trident_server_url");
+    if (custom && custom.trim()) {
+      return custom.trim().replace(/\/+$/, "");
+    }
+  }
+  const envUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, "");
+  }
+  return "http://47.129.188.226";
 }
 
-const API_BASE = getApiBaseUrl();
+export function setApiBaseUrl(url: string): void {
+  if (typeof window !== "undefined") {
+    if (url && url.trim()) {
+      localStorage.setItem("trident_server_url", url.trim().replace(/\/+$/, ""));
+    } else {
+      localStorage.removeItem("trident_server_url");
+    }
+  }
+}
 
-export async function login(email: string, password: string):Promise<{token: string}> {
-  const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
+export async function login(email: string, password: string): Promise<{ token: string }> {
+  const base = getApiBaseUrl();
+  const response = await fetch(`${base}/api/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -19,17 +38,19 @@ export async function login(email: string, password: string):Promise<{token: str
 }
 
 export async function fetchChallans(userId?: string, role = "admin"): Promise<SavedChallan[]> {
+  const base = getApiBaseUrl();
   const params = new URLSearchParams();
   if (userId) params.append("user_id", userId);
   if (role) params.append("role", role);
-  const url = `${API_BASE}/api/v1/challans/${params.toString() ? `?${params.toString()}` : ""}`;
+  const url = `${base}/api/v1/challans/${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to fetch challans");
   return res.json();
 }
 
 export async function createChallan(challan: SavedChallan): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/v1/challans/`, {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/api/v1/challans/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(challan),
@@ -38,21 +59,23 @@ export async function createChallan(challan: SavedChallan): Promise<void> {
 }
 
 export async function updateChallan(id: string, challan: SavedChallan): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/v1/challans/${id}`, {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/api/v1/challans/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       data: challan.data,
       source: challan.source,
       previewImageBase64: challan.previewImageBase64,
-      savedAt: challan.savedAt
+      savedAt: challan.savedAt,
     }),
   });
   if (!res.ok) throw new Error("Failed to update challan");
 }
 
 export async function deleteChallan(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/v1/challans/${id}`, {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/api/v1/challans/${id}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to delete challan");
@@ -60,7 +83,8 @@ export async function deleteChallan(id: string): Promise<void> {
 
 export async function migrateLegacyChallans(challans: SavedChallan[]): Promise<void> {
   if (!challans.length) return;
-  const res = await fetch(`${API_BASE}/api/v1/challans/migrate`, {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/api/v1/challans/migrate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(challans),

@@ -832,34 +832,34 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
     <div className={`flex-1 flex flex-col h-full bg-[#f8fafc] text-gray-800 overflow-hidden select-none relative ${isFullscreen ? "fixed inset-0 z-50 bg-[#f1f5f9]" : ""}`}>
       {/* ── Top Navigation Bar (Hidden in Fullscreen Mode) ─────────────── */}
       {!isFullscreen && !reviewMode && (
-        <header className="h-14 flex-shrink-0 bg-white border-b border-gray-200 px-4 sm:px-6 flex items-center justify-between z-30 shadow-sm">
-          <div className="flex items-center gap-3">
+        <header className="h-13 sm:h-14 flex-shrink-0 bg-white border-b border-gray-200 px-2.5 sm:px-6 flex items-center justify-between gap-1.5 sm:gap-3 z-30 shadow-xs">
+          <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-semibold transition-all shadow-xs"
+              className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 h-9 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs font-semibold transition-all shadow-xs shrink-0"
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="hidden sm:inline">Back to Dashboard</span>
             </button>
-            <div className="h-5 w-px bg-gray-200 mx-1 hidden sm:block" />
-            <div>
-              <h1 className="text-sm sm:text-base font-bold text-gray-900 flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Scribble Challan</span>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-semibold">
-                  Stylus &amp; Touch
-                </span>
+            <div className="h-5 w-px bg-gray-200 mx-0.5 hidden sm:block" />
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <h1 className="text-xs sm:text-base font-bold text-gray-900 truncate">
+                Scribble Challan
               </h1>
+              <span className="hidden md:inline-block text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-semibold shrink-0">
+                Stylus &amp; Touch
+              </span>
             </div>
           </div>
 
           {/* Primary Action Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setIsFullscreen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold shadow-xs transition-all"
+              className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 h-9 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold shadow-xs transition-all shrink-0"
               title="Fullscreen Mode (Customer Filling)"
             >
               <Maximize2 className="w-3.5 h-3.5 text-[#1a237e]" />
@@ -870,17 +870,18 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
               type="button"
               onClick={handleExtract}
               disabled={isProcessing}
-              className="flex items-center gap-2 px-4 sm:px-5 py-2 rounded-lg bg-[#1a237e] hover:bg-[#283593] text-white text-xs sm:text-sm font-bold shadow-md shadow-[#1a237e]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center justify-center gap-1.5 px-2.5 sm:px-5 py-2 h-9 rounded-lg bg-[#1a237e] hover:bg-[#283593] text-white text-xs sm:text-sm font-bold shadow-md shadow-[#1a237e]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             >
               {isProcessing ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <Loader2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 animate-spin text-white" />
                   <span>Extracting...</span>
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>Extract &amp; Review</span>
+                  <Sparkles className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-amber-300" />
+                  <span className="hidden sm:inline">Extract &amp; Review</span>
+                  <span className="sm:hidden">Extract</span>
                 </>
               )}
             </button>
@@ -890,52 +891,101 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
 
       {/* ── Normal Mode Toolbar (Hidden in Fullscreen Mode & Review Mode) ── */}
       {!isFullscreen && !reviewMode && (
-        <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs z-20 shadow-xs">
-          {/* Tool Mode Buttons */}
-          <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200 gap-1">
-            <button
-              type="button"
-              onClick={() => setTool("pen")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
-                tool === "pen"
-                  ? "bg-[#1a237e] text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
-              }`}
-            >
-              <Pen className="w-3.5 h-3.5" />
-              <span>Pen</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTool("eraser")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
-                tool === "eraser"
-                  ? "bg-amber-600 text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
-              }`}
-            >
-              <Eraser className="w-3.5 h-3.5" />
-              <span>Eraser</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setTool("pan")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
-                tool === "pan"
-                  ? "bg-emerald-600 text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
-              }`}
-            >
-              <Hand className="w-3.5 h-3.5" />
-              <span>Pan</span>
-            </button>
+        <div className="flex-shrink-0 bg-white border-b border-gray-200 px-2 sm:px-4 py-1.5 sm:py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 z-20 shadow-xs text-xs">
+          
+          {/* Top Row / Desktop Left: Tool Mode & Mobile Actions */}
+          <div className="flex items-center justify-between gap-1.5 w-full sm:w-auto">
+            {/* Tool Mode Buttons */}
+            <div className="flex items-center bg-gray-100 p-0.5 rounded-xl border border-gray-200 gap-0.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setTool("pen")}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold text-xs transition-all h-8 ${
+                  tool === "pen"
+                    ? "bg-[#1a237e] text-white shadow-sm"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
+                }`}
+              >
+                <Pen className="w-3.5 h-3.5" />
+                <span>Pen</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTool("eraser")}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold text-xs transition-all h-8 ${
+                  tool === "eraser"
+                    ? "bg-amber-600 text-white shadow-sm"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
+                }`}
+              >
+                <Eraser className="w-3.5 h-3.5" />
+                <span>Eraser</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTool("pan")}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-bold text-xs transition-all h-8 ${
+                  tool === "pan"
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
+                }`}
+              >
+                <Hand className="w-3.5 h-3.5" />
+                <span>Pan</span>
+              </button>
+            </div>
+
+            {/* Mobile Actions: Undo, Clear, Zoom (aligned on row 1) */}
+            <div className="flex items-center gap-1 shrink-0 sm:hidden">
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={undoStack.length === 0}
+                title="Undo stroke"
+                className="flex items-center justify-center px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 disabled:opacity-35 disabled:cursor-not-allowed transition-all text-xs font-semibold h-8 min-w-[32px]"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClear}
+                title="Clear all ink"
+                className="flex items-center justify-center px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 transition-all text-xs font-semibold h-8 min-w-[32px]"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Mobile Compact Zoom */}
+              <div className="flex items-center bg-gray-100 rounded-lg border border-gray-200 p-0.5 h-8">
+                <button
+                  type="button"
+                  onClick={handleZoomOut}
+                  className="p-1 rounded text-gray-700 hover:bg-white"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="px-1 font-mono text-[10px] text-gray-600 font-bold min-w-[30px] text-center">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={handleZoomIn}
+                  className="p-1 rounded text-gray-700 hover:bg-white"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Color & Thickness (only for Pen) */}
+          {/* Color & Thickness (when Pen selected) */}
           {tool === "pen" && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar pt-1 sm:pt-0 border-t border-gray-100 sm:border-0">
               {/* Color Palette */}
-              <div className="flex items-center gap-1.5 bg-gray-100 px-2.5 py-1 rounded-xl border border-gray-200">
+              <div className="flex items-center gap-1.5 bg-gray-100 px-2 py-1 rounded-xl border border-gray-200 shrink-0">
                 {PEN_COLORS.map((c) => (
                   <button
                     key={c.value}
@@ -952,13 +1002,13 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
               </div>
 
               {/* Stroke Widths */}
-              <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded-xl border border-gray-200">
+              <div className="flex items-center gap-0.5 bg-gray-100 px-1 py-0.5 rounded-xl border border-gray-200 shrink-0">
                 {STROKE_WIDTHS.map((s) => (
                   <button
                     key={s.value}
                     type="button"
                     onClick={() => setStrokeWidth(s.value)}
-                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
+                    className={`px-2 py-1 rounded text-[11px] font-semibold transition-all ${
                       strokeWidth === s.value
                         ? "bg-white text-gray-900 shadow-sm font-bold"
                         : "text-gray-500 hover:text-gray-800"
@@ -970,40 +1020,40 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
               </div>
 
               {/* Stylus Pen Shading Badge */}
-              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 font-semibold shadow-2xs">
+              <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 font-semibold shadow-2xs shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
                 <span>Stylus Pen Shading</span>
               </div>
             </div>
           )}
 
-          {/* Undo, Clear, and Zoom Controls */}
-          <div className="flex items-center gap-2 ml-auto">
+          {/* Desktop Actions: Undo, Clear, and Zoom Controls */}
+          <div className="hidden sm:flex items-center gap-2 sm:ml-auto shrink-0">
             <button
               type="button"
               onClick={handleUndo}
               disabled={undoStack.length === 0}
               title="Undo stroke (Recent reset)"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 disabled:opacity-35 disabled:cursor-not-allowed transition-all text-xs font-semibold"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 disabled:opacity-35 disabled:cursor-not-allowed transition-all text-xs font-semibold h-8"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Undo</span>
+              <span>Undo</span>
             </button>
 
             <button
               type="button"
               onClick={handleClear}
               title="Clear all ink"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 transition-all text-xs font-semibold"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 transition-all text-xs font-semibold h-8"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Clear</span>
+              <span>Clear</span>
             </button>
 
             <div className="h-4 w-px bg-gray-200 mx-1" />
 
             {/* Zoom controls */}
-            <div className="flex items-center bg-gray-100 rounded-xl border border-gray-200 p-0.5">
+            <div className="flex items-center bg-gray-100 rounded-xl border border-gray-200 p-0.5 h-8">
               <button
                 type="button"
                 onClick={handleZoomOut}
@@ -1248,12 +1298,12 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
               </p>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-start md:justify-end w-full md:w-auto">
               {compositeImage && (
                 <button
                   type="button"
                   onClick={() => setShowReviewImage((p) => !p)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                  className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all shrink-0 h-8 sm:h-9 ${
                     showReviewImage
                       ? "bg-blue-50 text-[#1a237e] border-blue-200 shadow-2xs"
                       : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
@@ -1261,14 +1311,14 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
                   title="Toggle scribble document preview"
                 >
                   <ImageIcon className="w-3.5 h-3.5" />
-                  <span>{showReviewImage ? "Hide Scribble Image" : "View Scribble Image"}</span>
+                  <span>{showReviewImage ? "Hide Image" : "View Image"}</span>
                 </button>
               )}
 
               <button
                 type="button"
                 onClick={handleCopyReviewJSON}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-200 bg-emerald-50/70 text-emerald-700 hover:bg-emerald-100 transition-colors shadow-2xs"
+                className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-200 bg-emerald-50/70 text-emerald-700 hover:bg-emerald-100 transition-colors shadow-2xs shrink-0 h-8 sm:h-9"
                 title="Copy JSON Payload"
               >
                 {copiedReviewJSON ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
@@ -1279,7 +1329,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
                 type="button"
                 onClick={handleSendReviewAPI}
                 disabled={sendingReviewAPI}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors shadow-2xs disabled:opacity-50"
+                className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors shadow-2xs disabled:opacity-50 shrink-0 h-8 sm:h-9"
                 title="Send via API"
               >
                 <Send className="w-3.5 h-3.5" />
@@ -1287,7 +1337,7 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
               </button>
 
               {reviewApiStatus && (
-                <span className={`text-[11px] font-medium ${reviewApiStatus.startsWith("✓") ? "text-green-600" : "text-red-500"}`}>
+                <span className={`text-[11px] font-medium shrink-0 ${reviewApiStatus.startsWith("✓") ? "text-green-600" : "text-red-500"}`}>
                   {reviewApiStatus}
                 </span>
               )}
@@ -1295,17 +1345,17 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
               <button
                 type="button"
                 onClick={() => setReviewMode(false)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors"
+                className="flex items-center justify-center px-3 sm:px-3.5 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors shrink-0 h-8 sm:h-9"
               >
-                Back to Scribble
+                Back
               </button>
               <button
                 type="button"
                 onClick={handleFinalSave}
-                className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-[#1a237e] hover:bg-[#283593] rounded-lg shadow-md transition-all"
+                className="flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-1.5 text-xs font-bold text-white bg-[#1a237e] hover:bg-[#283593] rounded-lg shadow-md transition-all shrink-0 h-8 sm:h-9"
               >
-                <Check className="w-4 h-4" />
-                Confirm &amp; Save
+                <Check className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+                <span>Save</span>
               </button>
             </div>
           </div>
@@ -1814,18 +1864,18 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
               </div>
 
               {/* Bottom Actions */}
-              <div className="pt-2 flex items-center justify-end gap-3 border-t border-gray-200">
+              <div className="pt-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={() => setReviewMode(false)}
-                  className="px-5 py-2.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                  className="flex items-center justify-center px-4 py-2.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors h-10 order-2 sm:order-1"
                 >
                   Back to Scribble
                 </button>
                 <button
                   type="button"
                   onClick={handleFinalSave}
-                  className="flex items-center gap-2 px-6 py-2.5 text-xs font-bold text-white bg-[#1a237e] hover:bg-[#283593] rounded-xl shadow-md shadow-[#1a237e]/20 transition-all"
+                  className="flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-[#1a237e] hover:bg-[#283593] rounded-xl shadow-md shadow-[#1a237e]/20 transition-all h-10 order-1 sm:order-2"
                 >
                   <Check className="w-4 h-4" />
                   Save Challan to Database

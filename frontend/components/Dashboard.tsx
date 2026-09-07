@@ -1294,7 +1294,7 @@ export function Dashboard({
   const totalCount = filteredChallans.length + filteredCanvasChallans.length;
 
   return (
-    <div className="flex-1 flex flex-col bg-[#f0f2f5] overflow-y-auto">
+    <div className="flex-1 flex flex-col bg-[#f0f2f5] overflow-y-auto w-full max-w-full min-w-0">
       {/* Dashboard Header */}
       <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -1330,7 +1330,7 @@ export function Dashboard({
       </div>
 
       {/* Content */}
-      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-6 w-full">
+      <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-6 w-full min-w-0 max-w-full">
         {challans.length === 0 && canvasChallans.length === 0 ? (
           /* Empty State */
           <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -1459,7 +1459,8 @@ export function Dashboard({
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-md overflow-x-auto shadow-sm">
+            <div className="bg-white border border-gray-200 rounded-md overflow-x-auto shadow-sm w-full max-w-full">
+
               <table className="w-full min-w-[800px] text-left text-xs text-gray-700">
                 <thead className="bg-[#f8fafc] border-b border-gray-200 text-gray-500 font-bold tracking-widest uppercase text-[10px]">
                   <tr>

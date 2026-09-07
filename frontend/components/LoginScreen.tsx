@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { login } from "@/utils/api";
 import { useToast } from "@/components/ToastProvider";
-import { Loader2, Download } from "lucide-react";
+import { Loader2, Download, Server } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuthUser } from "@/types/ocr";
+import { ServerConfigModal } from "@/components/ServerConfigModal";
+
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -16,6 +18,11 @@ export function LoginScreen({ onLogin }: { onLogin: (user?: AuthUser | null) => 
   const [loading, setLoading] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const { showAlert } = useToast();
+  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+
+
+
+
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -143,8 +150,24 @@ export function LoginScreen({ onLogin }: { onLogin: (user?: AuthUser | null) => 
               Install PWA App
             </button>
           </div>
+
+          <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => setIsServerModalOpen(true)}
+              className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-600 transition-colors"
+            >
+              <Server className="w-3.5 h-3.5 text-gray-400" />
+              <span>Configure Backend Server URL</span>
+            </button>
+          </div>
         </form>
       </motion.div>
+
+      <ServerConfigModal
+        isOpen={isServerModalOpen}
+        onClose={() => setIsServerModalOpen(false)}
+      />
     </div>
   );
 }
