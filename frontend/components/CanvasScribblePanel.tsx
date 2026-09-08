@@ -34,7 +34,7 @@ import {
 import { processCanvasChallan, getApiBaseUrl } from "@/utils/api";
 import { useToast } from "@/components/ToastProvider";
 import { SavedCanvasChallan, CanvasChallanData, CanvasChallanItem } from "@/types/ocr";
-import { applyParsedDimensionsCanvas, parseSteelDescription } from "@/utils/steelParser";
+import { applyParsedDimensionsCanvas, parseSteelDescription, calculateTheoreticalWeightMT } from "@/utils/steelParser";
 
 interface CanvasScribblePanelProps {
   onBack: () => void;
@@ -940,8 +940,34 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
       const updated = [...prev];
       const item = { ...updated[index], [field]: value };
 
-      // Auto-compute weight_mt if unit changed to KG or MT, or quantity changed
-      if (field === "unit" || field === "quantity") {
+      // When the description changes, auto-populate all extracted fields in real time
+      if (field === "description") {
+        const parsed = parseSteelDescription(value);
+        if (parsed.materialType) item.material_type = parsed.materialType;
+        if (parsed.thicknessMm)  item.thickness_mm  = parsed.thicknessMm;
+        if (parsed.widthMm)      item.width_mm      = parsed.widthMm;
+        if (parsed.heightMm)     item.height_mm     = parsed.heightMm;
+        if (parsed.lengthMm)     item.length_mm     = parsed.lengthMm;
+        if (parsed.qty)          item.quantity      = parsed.qty;
+        if (parsed.unit)         item.unit          = parsed.unit;
+
+        if (parsed.weightMT) {
+          item.weight_mt = parsed.weightMT;
+        } else {
+          const theo = calculateTheoreticalWeightMT({
+            materialType: item.material_type,
+            thicknessMm: item.thickness_mm,
+            widthMm: item.width_mm,
+            heightMm: item.height_mm,
+            lengthMm: item.length_mm,
+            qty: item.quantity,
+          });
+          if (theo) item.weight_mt = theo;
+        }
+      }
+
+      // Auto-compute weight_mt if unit changed to KG or MT
+      if (field === "unit") {
         const qVal = Number.parseFloat(item.quantity || "0");
         if (!Number.isNaN(qVal) && qVal > 0) {
           if (item.unit === "MT" || item.unit === "TON") {
@@ -952,14 +978,20 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
         }
       }
 
-      // When the description changes, auto-populate empty dimensional fields
-      if (field === "description") {
-        const parsed = parseSteelDescription(value);
-        if (parsed.materialType) item.material_type = parsed.materialType;
-        if (parsed.thicknessMm)  item.thickness_mm  = parsed.thicknessMm;
-        if (parsed.widthMm)      item.width_mm      = parsed.widthMm;
-        if (parsed.heightMm)     item.height_mm     = parsed.heightMm;
-        if (parsed.lengthMm)     item.length_mm     = parsed.lengthMm;
+      // If dimensions, qty, or material changed, recalculate theoretical weight in REAL TIME
+      const isDimField = ["material_type", "thickness_mm", "width_mm", "height_mm", "length_mm", "quantity"].includes(field);
+      if (isDimField) {
+        const theo = calculateTheoreticalWeightMT({
+          materialType: item.material_type,
+          thicknessMm: item.thickness_mm,
+          widthMm: item.width_mm,
+          heightMm: item.height_mm,
+          lengthMm: item.length_mm,
+          qty: item.quantity,
+        });
+        if (theo) {
+          item.weight_mt = theo;
+        }
       }
 
       updated[index] = item;
@@ -1847,22 +1879,22 @@ export function CanvasScribblePanel({ onBack, onSaved, currentUser }: Readonly<C
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
+                <div className="overflow-x-auto w-full pb-2">
+                  <table className="w-full min-w-[1240px] text-left text-xs border-collapse">
                     <thead className="bg-gray-100/90 text-gray-700 font-bold uppercase text-[10px] border-b border-gray-200">
                       <tr>
-                        <th className="px-3 py-2.5 w-12 text-center">Sl.</th>
-                        <th className="px-3 py-2.5 w-28">Item No. (HSN)</th>
-                        <th className="px-3 py-2.5 min-w-[160px]">Description of Goods</th>
-                        <th className="px-2 py-2.5 w-24">Mat. Type</th>
-                        <th className="px-2 py-2.5 w-20">Thk (mm)</th>
-                        <th className="px-2 py-2.5 w-20">W (mm)</th>
-                        <th className="px-2 py-2.5 w-20">H (mm)</th>
-                        <th className="px-2 py-2.5 w-20">L (mm)</th>
-                        <th className="px-3 py-2.5 w-20 text-right">QTY</th>
-                        <th className="px-3 py-2.5 w-24">UNIT</th>
-                        <th className="px-3 py-2.5 w-28 text-right">Weight (MT)</th>
-                        <th className="px-2 py-2.5 w-10 text-center"></th>
+                        <th className="px-3 py-2.5 w-12 min-w-[48px] text-center">Sl.</th>
+                        <th className="px-3 py-2.5 w-32 min-w-[120px]">Item No. (HSN)</th>
+                        <th className="px-3 py-2.5 min-w-[260px]">Description of Goods</th>
+                        <th className="px-2 py-2.5 w-28 min-w-[110px]">Mat. Type</th>
+                        <th className="px-2 py-2.5 w-24 min-w-[95px] text-right">Thk (mm)</th>
+                        <th className="px-2 py-2.5 w-24 min-w-[95px] text-right">W (mm)</th>
+                        <th className="px-2 py-2.5 w-24 min-w-[95px] text-right">H (mm)</th>
+                        <th className="px-2 py-2.5 w-28 min-w-[105px] text-right">L (mm)</th>
+                        <th className="px-3 py-2.5 w-20 min-w-[80px] text-right">QTY</th>
+                        <th className="px-3 py-2.5 w-24 min-w-[90px]">UNIT</th>
+                        <th className="px-3 py-2.5 w-28 min-w-[115px] text-right">Weight (MT)</th>
+                        <th className="px-2 py-2.5 w-10 min-w-[40px] text-center"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">

@@ -136,7 +136,7 @@ export const DocumentViewer = memo(function DocumentViewer({
               src={imgSrc}
               alt="Document view"
               onLoad={handleImageLoad}
-              className="max-h-[720px] max-w-full w-auto block select-none pointer-events-none"
+              className="max-h-[calc(36vh-50px)] sm:max-h-[calc(40vh-50px)] lg:max-h-[720px] max-w-full w-auto h-auto object-contain block select-none pointer-events-none"
             />
             {/* SVG Region Lens Overlay */}
             <RegionCanvas

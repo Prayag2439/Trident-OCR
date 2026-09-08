@@ -2,7 +2,11 @@ import { SavedChallan, SavedCanvasChallan, CanvasProcessResponse } from "@/types
 
 export function getApiBaseUrl(): string {
   if (typeof window !== "undefined") {
-    const custom = localStorage.getItem("trident_server_url");
+    let custom = localStorage.getItem("trident_server_url");
+    if (custom && custom.includes("47.129.188.226")) {
+      custom = "https://trident-challan.corecotechnologies.com";
+      localStorage.setItem("trident_server_url", custom);
+    }
     if (custom && custom.trim()) {
       return custom.trim().replace(/\/+$/, "");
     }
@@ -23,7 +27,7 @@ export function getApiBaseUrl(): string {
   if (envUrl && envUrl.trim()) {
     return envUrl.trim().replace(/\/+$/, "");
   }
-  return "http://47.129.188.226";
+  return "https://trident-challan.corecotechnologies.com";
 }
 
 export function setApiBaseUrl(url: string): void {

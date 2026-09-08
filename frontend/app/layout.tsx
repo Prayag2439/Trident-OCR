@@ -24,12 +24,12 @@ export const viewport: Viewport = {
 
 
 export const metadata: Metadata = {
-  title: "Optimo Challan Console",
+  title: "Trident Fabricators",
   description: "Enterprise-grade challan and despatch document extraction pipeline.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Optimo Challan",
+    title: "Trident Fabricators",
   },
   icons: {
     apple: "/trident-logo.png",

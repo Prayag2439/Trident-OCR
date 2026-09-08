@@ -1042,21 +1042,21 @@ function EditChallanModal({
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full min-w-[1240px] text-left text-xs border-collapse">
                     <thead className="bg-gray-100 text-gray-700 font-bold uppercase text-[10px] border-b border-gray-200">
                       <tr>
-                        <th className="px-2 py-2.5 w-10 text-center">Sl.</th>
-                        <th className="px-2 py-2.5 w-24">Item No. (HSN)</th>
-                        <th className="px-2 py-2.5 min-w-[150px]">Description of Goods</th>
-                        <th className="px-2 py-2.5 w-20">Mat. Type</th>
-                        <th className="px-2 py-2.5 w-14 text-right">Thk</th>
-                        <th className="px-2 py-2.5 w-14 text-right">W</th>
-                        <th className="px-2 py-2.5 w-14 text-right">H</th>
-                        <th className="px-2 py-2.5 w-14 text-right">L</th>
-                        <th className="px-2 py-2.5 w-16 text-right">QTY</th>
-                        <th className="px-2 py-2.5 w-20">UNIT</th>
-                        <th className="px-2 py-2.5 w-24 text-right">Weight (MT)</th>
-                        <th className="px-2 py-2.5 w-8 text-center"></th>
+                        <th className="px-2 py-2.5 w-12 min-w-[48px] text-center">Sl.</th>
+                        <th className="px-2 py-2.5 w-32 min-w-[120px]">Item No. (HSN)</th>
+                        <th className="px-2 py-2.5 min-w-[260px]">Description of Goods</th>
+                        <th className="px-2 py-2.5 w-28 min-w-[110px]">Mat. Type</th>
+                        <th className="px-2 py-2.5 w-24 min-w-[95px] text-right">Thk (mm)</th>
+                        <th className="px-2 py-2.5 w-24 min-w-[95px] text-right">W (mm)</th>
+                        <th className="px-2 py-2.5 w-24 min-w-[95px] text-right">H (mm)</th>
+                        <th className="px-2 py-2.5 w-28 min-w-[105px] text-right">L (mm)</th>
+                        <th className="px-2 py-2.5 w-20 min-w-[80px] text-right">QTY</th>
+                        <th className="px-2 py-2.5 w-24 min-w-[90px]">UNIT</th>
+                        <th className="px-2 py-2.5 w-28 min-w-[115px] text-right">Weight (MT)</th>
+                        <th className="px-2 py-2.5 w-10 min-w-[40px] text-center"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">

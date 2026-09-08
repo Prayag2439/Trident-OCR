@@ -5,10 +5,11 @@ const config: CapacitorConfig = {
   appName: 'Trident Fabricators',
   webDir: 'out',
   server: {
-    androidScheme: 'http',
+    androidScheme: 'https',
     cleartext: true,
     allowNavigation: [
-      '*'
+      '*',
+      'trident-challan.corecotechnologies.com'
     ]
   },
   plugins: {

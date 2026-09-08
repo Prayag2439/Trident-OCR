@@ -482,9 +482,9 @@ export default function Home() {
   }
 
   return (
-    <main className="flex-1 flex flex-col min-h-screen w-full max-w-full overflow-x-hidden min-w-0">
+    <main className={`flex-1 flex flex-col w-full max-w-full min-w-0 ${appView === "edit" ? "h-[100dvh] max-h-[100dvh] overflow-hidden" : "min-h-screen overflow-x-hidden"}`}>
       {/* ── Top Navigation Bar (always visible) ──────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-3 sm:px-6 py-2 shadow-xs w-full max-w-full">
+      <header className="sticky top-0 z-50 bg-white border-b border-gray-200 px-3 sm:px-6 py-2 shadow-xs w-full max-w-full shrink-0">
         <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-2 sm:gap-4 w-full min-w-0">
           {/* Left: Trident Logo branding */}
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -546,7 +546,7 @@ export default function Home() {
       </header>
 
       {/* ── Main Content ──────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col bg-white w-full max-w-full min-w-0">
+      <div className={`flex-1 flex flex-col bg-white w-full max-w-full min-w-0 ${appView === "edit" ? "min-h-0 overflow-hidden" : ""}`}>
 
         {/* VIEW: Dashboard */}
         {appView === "dashboard" && (
@@ -673,10 +673,10 @@ export default function Home() {
         )}
 
         {appView === "edit" && editingChallan && editingSource !== "voice" && (
-          <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 overflow-hidden" style={{ height: "calc(100vh - 57px)" }}>
-            {/* Left Panel: Document / Scribble image viewer on laptop web view */}
+          <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 overflow-hidden w-full h-[calc(100dvh-57px)] max-h-[calc(100dvh-57px)]" style={{ height: "calc(100dvh - 57px)" }}>
+            {/* Left/Top Panel: Document / Scribble image viewer - Fixed in all aspect ratios, never scrolls */}
             {(editingSource === "upload" || Boolean(editingPreview) || Boolean(previewUrl)) && (
-              <div className="w-full lg:col-span-5 h-1/3 lg:h-full flex flex-col overflow-hidden border-b lg:border-b-0 lg:border-r border-gray-200 bg-[#07080b]">
+              <div className="w-full lg:col-span-5 h-[36vh] sm:h-[40vh] lg:h-full flex-shrink-0 flex flex-col overflow-hidden border-b lg:border-b-0 lg:border-r border-gray-200 bg-[#07080b] z-10">
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <DocumentViewer
                     previewUrl={resolveViewerPreview(previewUrl, editingPreview)}
@@ -689,8 +689,8 @@ export default function Home() {
               </div>
             )}
 
-            {/* Right Panel: Editable Challan Form */}
-            <div className={`w-full ${(editingSource === "upload" || Boolean(editingPreview) || Boolean(previewUrl)) ? "lg:col-span-7" : "lg:col-span-12"} flex-1 lg:h-full overflow-hidden`}>
+            {/* Right/Bottom Panel: Editable Challan Form - Only this part is scrollable */}
+            <div className={`w-full ${(editingSource === "upload" || Boolean(editingPreview) || Boolean(previewUrl)) ? "lg:col-span-7" : "lg:col-span-12"} flex-1 min-h-0 lg:h-full flex flex-col overflow-hidden`}>
               <ChallanEditPanel
                 key={`${editingSource}-${editingId || "new"}`}
                 initialData={editingChallan}
@@ -704,12 +704,12 @@ export default function Home() {
 
         {/* Voice mode: flex layout — VoiceAssistantPanel self-manages its width (collapsed/expanded) */}
         {appView === "edit" && editingChallan && editingSource === "voice" && (
-          <div className="flex-1 flex flex-col md:flex-row overflow-hidden" style={{ height: "calc(100vh - 57px)" }}>
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden w-full h-[calc(100dvh-57px)] max-h-[calc(100dvh-57px)]" style={{ height: "calc(100dvh - 57px)" }}>
             <VoiceAssistantPanel
               currentData={liveChallanData || editingChallan}
               onApplyUpdates={(updates) => setIncomingUpdates({ ...updates })}
             />
-            <div className="flex-1 min-w-0 h-full overflow-hidden">
+            <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col overflow-hidden">
               <ChallanEditPanel
                 key={editingId || "new"}
                 initialData={editingChallan}

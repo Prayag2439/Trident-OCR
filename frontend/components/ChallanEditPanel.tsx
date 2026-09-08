@@ -20,10 +20,12 @@ import {
   MessageSquare,
   Bot,
   Loader2,
+  Calculator,
 } from "lucide-react";
 import { ChallanData, ChallanItem } from "@/types/ocr";
 import { getApiBaseUrl } from "@/utils/api";
-import { applyParsedDimensions, parseSteelDescription } from "@/utils/steelParser";
+import { applyParsedDimensions, parseSteelDescription, calculateTheoreticalWeightMT } from "@/utils/steelParser";
+import { useToast } from "@/components/ToastProvider";
 
 
 interface ChallanEditPanelProps {
@@ -131,6 +133,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
   const [sendStatus, setSendStatus] = useState<string | null>(null);
   const [copiedExcel, setCopiedExcel] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
+  const { showAlert } = useToast();
 
   // Synchronize state when initialData changes (e.g. OCR completes or edit target changes)
   useEffect(() => {
@@ -212,7 +215,8 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
     setData((prev) => {
       const items = [...prev.items];
       const updated = { ...items[index], [field]: value };
-      // When the description changes, auto-populate empty dimensional fields
+
+      // When the description changes, auto-populate all extracted fields in real time
       if (field === "description") {
         const parsed = parseSteelDescription(value);
         if (parsed.materialType) updated.materialType = parsed.materialType;
@@ -220,10 +224,71 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
         if (parsed.widthMm)      updated.widthMm      = parsed.widthMm;
         if (parsed.heightMm)     updated.heightMm     = parsed.heightMm;
         if (parsed.lengthMm)     updated.lengthMm     = parsed.lengthMm;
+        if (parsed.qty)          updated.qty          = parsed.qty;
+        if (parsed.unit)         updated.unit         = parsed.unit;
+
+        // Auto-calculate weight: use explicit weight from description if present, else theoretical calculation
+        if (parsed.weightMT) {
+          updated.weightMT = parsed.weightMT;
+        } else {
+          const theo = calculateTheoreticalWeightMT({
+            materialType: updated.materialType,
+            thicknessMm: updated.thicknessMm,
+            widthMm: updated.widthMm,
+            heightMm: updated.heightMm,
+            lengthMm: updated.lengthMm,
+            qty: updated.qty,
+          });
+          if (theo) updated.weightMT = theo;
+        }
       }
+
+      // If dimensions, qty, or material changed, recalculate theoretical weight in REAL TIME
+      const isDimField = ["materialType", "thicknessMm", "widthMm", "heightMm", "lengthMm", "qty"].includes(field);
+      if (isDimField) {
+        const theo = calculateTheoreticalWeightMT({
+          materialType: updated.materialType,
+          thicknessMm: updated.thicknessMm,
+          widthMm: updated.widthMm,
+          heightMm: updated.heightMm,
+          lengthMm: updated.lengthMm,
+          qty: updated.qty,
+        });
+        if (theo) {
+          updated.weightMT = theo;
+        }
+      }
+
       items[index] = updated;
       return { ...prev, items };
     });
+  };
+
+  const handleAutoCalculateAllWeights = () => {
+    let count = 0;
+    setData((prev) => {
+      const items = prev.items.map((item) => {
+        const theo = calculateTheoreticalWeightMT({
+          materialType: item.materialType,
+          thicknessMm: item.thicknessMm,
+          widthMm: item.widthMm,
+          heightMm: item.heightMm,
+          lengthMm: item.lengthMm,
+          qty: item.qty,
+        });
+        if (theo) {
+          count++;
+          return { ...item, weightMT: theo };
+        }
+        return item;
+      });
+      return { ...prev, items };
+    });
+    if (count > 0) {
+      showAlert(`Calculated theoretical steel weight for ${count} item(s).`, "success");
+    } else {
+      showAlert("No dimensional specs found to calculate weight. Ensure thickness, width/depth, and length are entered.", "info");
+    }
   };
 
   const addItem = () => {
@@ -444,7 +509,7 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
       </div>
 
       {/* ── Scrollable Form Body ──────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 space-y-3 sm:space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 space-y-3 sm:space-y-4">
 
         {/* ── Section 1: Challan Details ─────────────────────────────── */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -575,84 +640,95 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                 Description of Goods
               </span>
             </div>
-            {/* Clear Table Button */}
-            {clearConfirm ? (
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-red-600 font-semibold">Clear all rows?</span>
-                <button
-                  type="button"
-                  onClick={clearItems}
-                  className="px-2 py-1 text-[10px] font-bold rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
-                >
-                  Yes, Clear
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setClearConfirm(false)}
-                  className="px-2 py-1 text-[10px] font-bold rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setClearConfirm(true)}
-                className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors"
+                onClick={handleAutoCalculateAllWeights}
+                className="flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg transition-colors shadow-2xs"
+                title="Calculate theoretical steel weight based on dimensions and quantity"
               >
-                <Trash2 className="w-3 h-3" />
-                Clear Table
+                <Calculator className="w-3 h-3 text-indigo-600" />
+                <span>Auto-Calc Weights</span>
               </button>
-            )}
+              {/* Clear Table Button */}
+              {clearConfirm ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-red-600 font-semibold">Clear all rows?</span>
+                  <button
+                    type="button"
+                    onClick={clearItems}
+                    className="px-2 py-1 text-[10px] font-bold rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                  >
+                    Yes, Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClearConfirm(false)}
+                    className="px-2 py-1 text-[10px] font-bold rounded bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setClearConfirm(true)}
+                  className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear Table
+                </button>
+              )}
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-xs">
+          <div className="overflow-x-auto w-full pb-2">
+            <table className="w-full min-w-[1280px] border-collapse text-xs">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="goods-th w-10">Sl.</th>
-                  <th className="goods-th w-28">Item No. (HSN)</th>
-                  <th className="goods-th min-w-[160px]">Description</th>
-                  <th className="goods-th w-24">Mat. Type</th>
-                  <th className="goods-th w-20">Thk (mm)</th>
-                  <th className="goods-th w-20">W (mm)</th>
-                  <th className="goods-th w-20">H (mm)</th>
-                  <th className="goods-th w-20">L (mm)</th>
-                  <th className="goods-th w-16">QTY</th>
-                  <th className="goods-th w-20">UNIT</th>
-                  <th className="goods-th w-24">Weight (MT)</th>
-                  <th className="goods-th w-10"></th>
+                  <th className="goods-th w-12 min-w-[48px] text-center">Sl.</th>
+                  <th className="goods-th w-36 min-w-[140px]">Item No. (HSN)</th>
+                  <th className="goods-th min-w-[280px]">Description</th>
+                  <th className="goods-th w-32 min-w-[125px]">Mat. Type</th>
+                  <th className="goods-th w-28 min-w-[110px] text-right">Thk (mm)</th>
+                  <th className="goods-th w-28 min-w-[110px] text-right">W (mm)</th>
+                  <th className="goods-th w-28 min-w-[110px] text-right">H (mm)</th>
+                  <th className="goods-th w-32 min-w-[120px] text-right">L (mm)</th>
+                  <th className="goods-th w-24 min-w-[90px] text-center">QTY</th>
+                  <th className="goods-th w-28 min-w-[100px]">UNIT</th>
+                  <th className="goods-th w-32 min-w-[125px] text-right">Weight (MT)</th>
+                  <th className="goods-th w-12 min-w-[48px] text-center"></th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map((item, i) => (
                   <tr key={item.slNo ? `item-sl-${item.slNo}` : `item-row-${item.itemNo}-${item.description}`} className="border-b border-gray-100 hover:bg-blue-50/40 transition-colors">
-                    <td className="goods-td text-center text-gray-400">{i + 1}</td>
-                    <td className="goods-td">
+                    <td className="goods-td w-12 min-w-[48px] text-center text-gray-400 font-medium">{i + 1}</td>
+                    <td className="goods-td w-36 min-w-[140px]">
                       <input
                         type="text"
                         value={item.itemNo}
                         onChange={(e) => updateItem(i, "itemNo", e.target.value)}
-                        className="cell-input"
+                        className="cell-input font-mono"
                         placeholder="HSN code"
                         aria-label={`Item ${i + 1} HSN code`}
                       />
                     </td>
-                    <td className="goods-td">
+                    <td className="goods-td min-w-[280px]">
                       <input
                         type="text"
                         value={item.description}
                         onChange={(e) => updateItem(i, "description", e.target.value)}
-                        className="cell-input"
+                        className="cell-input font-medium"
                         placeholder="Item description..."
                         aria-label={`Item ${i + 1} Description`}
                       />
                     </td>
                     {/* Dimensional fields */}
-                    <td className="goods-td">
+                    <td className="goods-td w-32 min-w-[125px]">
                       <select
                         value={item.materialType || ""}
                         onChange={(e) => updateItem(i, "materialType", e.target.value)}
-                        className="cell-input bg-white"
+                        className="cell-input bg-white font-semibold text-gray-800"
                         aria-label={`Item ${i + 1} Material Type`}
                       >
                         <option value="">—</option>
@@ -664,61 +740,61 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         <option value="OTHER">OTHER</option>
                       </select>
                     </td>
-                    <td className="goods-td">
+                    <td className="goods-td w-28 min-w-[110px]">
                       <input
                         type="text"
                         value={item.thicknessMm || ""}
                         onChange={(e) => updateItem(i, "thicknessMm", e.target.value)}
-                        className="cell-input text-right"
+                        className="cell-input text-right font-mono font-medium text-gray-900"
                         placeholder="mm"
                         aria-label={`Item ${i + 1} Thickness`}
                       />
                     </td>
-                    <td className="goods-td">
+                    <td className="goods-td w-28 min-w-[110px]">
                       <input
                         type="text"
                         value={item.widthMm || ""}
                         onChange={(e) => updateItem(i, "widthMm", e.target.value)}
-                        className="cell-input text-right"
+                        className="cell-input text-right font-mono font-medium text-gray-900"
                         placeholder="mm"
                         aria-label={`Item ${i + 1} Width`}
                       />
                     </td>
-                    <td className="goods-td">
+                    <td className="goods-td w-28 min-w-[110px]">
                       <input
                         type="text"
                         value={item.heightMm || ""}
                         onChange={(e) => updateItem(i, "heightMm", e.target.value)}
-                        className="cell-input text-right"
+                        className="cell-input text-right font-mono font-medium text-gray-900"
                         placeholder="mm"
                         aria-label={`Item ${i + 1} Height/Depth`}
                       />
                     </td>
-                    <td className="goods-td">
+                    <td className="goods-td w-32 min-w-[120px]">
                       <input
                         type="text"
                         value={item.lengthMm || ""}
                         onChange={(e) => updateItem(i, "lengthMm", e.target.value)}
-                        className="cell-input text-right"
+                        className="cell-input text-right font-mono font-medium text-gray-900"
                         placeholder="mm"
                         aria-label={`Item ${i + 1} Length`}
                       />
                     </td>
-                    <td className="goods-td">
+                    <td className="goods-td w-24 min-w-[90px]">
                       <input
                         type="text"
                         value={item.qty}
                         onChange={(e) => updateItem(i, "qty", e.target.value)}
-                        className="cell-input text-center"
+                        className="cell-input text-center font-semibold text-gray-900"
                         placeholder="1"
                         aria-label={`Item ${i + 1} Quantity`}
                       />
                     </td>
-                    <td className="goods-td">
+                    <td className="goods-td w-28 min-w-[100px]">
                       <select
                         value={item.unit}
                         onChange={(e) => updateItem(i, "unit", e.target.value)}
-                        className="cell-input bg-white"
+                        className="cell-input bg-white font-medium text-gray-800"
                         aria-label={`Item ${i + 1} Unit`}
                       >
                         {UNIT_OPTIONS.map((u) => (
@@ -726,17 +802,44 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
                         ))}
                       </select>
                     </td>
-                    <td className="goods-td">
-                      <input
-                        type="text"
-                        value={item.weightMT}
-                        onChange={(e) => updateItem(i, "weightMT", e.target.value)}
-                        className="cell-input text-right"
-                        placeholder="0.000"
-                        aria-label={`Item ${i + 1} Weight in MT`}
-                      />
+                    <td className="goods-td w-32 min-w-[125px]">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={item.weightMT}
+                          onChange={(e) => updateItem(i, "weightMT", e.target.value)}
+                          className="cell-input text-right font-mono font-semibold text-gray-900 flex-1 min-w-0"
+                          placeholder="0.000"
+                          aria-label={`Item ${i + 1} Weight in MT`}
+                        />
+                        {Boolean(item.materialType || item.thicknessMm || item.widthMm) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const theo = calculateTheoreticalWeightMT({
+                                materialType: item.materialType,
+                                thicknessMm: item.thicknessMm,
+                                widthMm: item.widthMm,
+                                heightMm: item.heightMm,
+                                lengthMm: item.lengthMm,
+                                qty: item.qty,
+                              });
+                              if (theo) {
+                                updateItem(i, "weightMT", theo);
+                                showAlert(`Row ${i + 1}: Calculated theoretical weight is ${theo} MT`, "success");
+                              } else {
+                                showAlert("Please enter valid thickness, dimensions, and length to calculate theoretical weight.", "error");
+                              }
+                            }}
+                            title="Calculate theoretical weight for this item"
+                            className="p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 shrink-0 transition-colors"
+                          >
+                            <Calculator className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     </td>
-                    <td className="goods-td text-center">
+                    <td className="goods-td w-12 min-w-[48px] text-center">
                       <button
                         type="button"
                         onClick={() => removeItem(i)}
@@ -984,38 +1087,40 @@ export function ChallanEditPanel({ initialData, onSave, onView, onCancel, incomi
         }
         :global(.goods-th) {
           padding: 8px 10px;
-          font-size: 10px;
+          font-size: 11px;
           font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.06em;
-          color: #6b7280;
+          letter-spacing: 0.05em;
+          color: #4b5563;
           text-align: left;
           white-space: nowrap;
           background: #f9fafb;
         }
         :global(.goods-td) {
-          padding: 4px 6px;
+          padding: 5px 6px;
           vertical-align: middle;
         }
         :global(.cell-input) {
           width: 100%;
-          padding: 5px 7px;
-          font-size: 12px;
-          border: 1px solid transparent;
-          border-radius: 4px;
-          background: transparent;
+          min-width: 0;
+          padding: 6px 8px;
+          font-size: 13px;
+          border: 1px solid #e5e7eb;
+          border-radius: 6px;
+          background: #ffffff;
           color: #111827;
           outline: none;
-          transition: border-color 0.15s, background 0.15s;
+          transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
           font-family: inherit;
         }
         :global(.cell-input:focus) {
-          border-color: #93c5fd;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
           background: #eff6ff;
         }
         :global(.cell-input:hover) {
-          border-color: #d1d5db;
-          background: #f9fafb;
+          border-color: #cbd5e1;
+          background: #f8fafc;
         }
       `}</style>
     </div>
