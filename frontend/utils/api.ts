@@ -1,32 +1,33 @@
 import { SavedChallan, SavedCanvasChallan, CanvasProcessResponse } from "@/types/ocr";
 
 export function getApiBaseUrl(): string {
-  if (typeof window !== "undefined") {
-    let custom = localStorage.getItem("trident_server_url");
-    if (custom && custom.includes("47.129.188.226")) {
-      custom = "https://trident-challan.corecotechnologies.com";
-      localStorage.setItem("trident_server_url", custom);
-    }
-    if (custom && custom.trim()) {
-      return custom.trim().replace(/\/+$/, "");
-    }
-    const isCapacitor = !!(window as any).Capacitor?.isNativePlatform?.();
-    const hostname = window.location.hostname;
-    // When accessing from a browser on local network (e.g. 192.168.x.x, 10.x.x.x, localhost in dev):
-    if (!isCapacitor && (
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      /^192\.168\./.test(hostname) ||
-      /^10\./.test(hostname) ||
-      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)
-    )) {
-      return `http://${hostname}:8000`;
-    }
-  }
+  // 1. Environment variable configured by DevOps (.env, .env.production, etc.)
   const envUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
   if (envUrl && envUrl.trim()) {
     return envUrl.trim().replace(/\/+$/, "");
   }
+
+  // 2. User-configured override stored in localStorage
+  if (typeof window !== "undefined") {
+    const custom = localStorage.getItem("trident_server_url");
+    if (custom && custom.trim()) {
+      return custom.trim().replace(/\/+$/, "");
+    }
+
+    const isCapacitor = !!(window as any).Capacitor?.isNativePlatform?.();
+    if (!isCapacitor) {
+      // Local development fallback for localhost
+      if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+        return "http://localhost:8000";
+      }
+      // On web browser, dynamically use the current domain origin
+      if (window.location.origin) {
+        return window.location.origin;
+      }
+    }
+  }
+
+  // 3. Default fallback for mobile app
   return "https://trident-challan.corecotechnologies.com";
 }
 
