@@ -14,7 +14,7 @@ import { DropZone } from "@/components/DropZone";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { ChallanEditPanel } from "@/components/ChallanEditPanel";
 import { ChallanPrintView } from "@/components/ChallanPrintView";
-import { Dashboard } from "@/components/Dashboard";
+import { Dashboard, mapCanvasToChallanData } from "@/components/Dashboard";
 import { VoiceAssistantPanel } from "@/components/VoiceAssistantPanel";
 import { CanvasScribblePanel } from "@/components/CanvasScribblePanel";
 import {
@@ -319,16 +319,51 @@ export default function Home() {
     async (data: ChallanData) => {
       try {
         if (editingId) {
-          // Update existing challan
-          const updatedChallan = {
-            id: editingId,
-            data,
-            source: editingSource || "manual",
-            previewImageBase64: editingPreview || undefined,
-            savedAt: new Date().toISOString()
-          };
-          await updateChallan(editingId, updatedChallan);
-          showAlert("Challan updated successfully.", "success");
+          if (editingSource === "scribble") {
+            const canvasUpdates: Partial<SavedCanvasChallan> = {
+              challan_no: data.challanNo,
+              date: data.date,
+              your_order_no: data.yourOrderNo,
+              order_date: data.date,
+              vehicle_no: data.vehicleNo,
+              eway_bill_no: data.ewayBillNo,
+              party_name: data.partyName,
+              address: data.address,
+              gstin: data.gstin,
+              remarks: data.remarks,
+              computed_weight_mt: data.computedWeightMT,
+              total_weight_override: data.totalWeightOverride || data.computedWeightMT,
+              total_value_incl_tax: data.totalValueInclTax || "0",
+              items: data.items.map((it, idx) => ({
+                sr_no: it.slNo || String(idx + 1),
+                item_no: it.itemNo || "",
+                description: it.description || "",
+                material_type: it.materialType || "",
+                thickness_mm: it.thicknessMm || "",
+                width_mm: it.widthMm || "",
+                height_mm: it.heightMm || "",
+                length_mm: it.lengthMm || "",
+                quantity: it.qty || "1",
+                unit: it.unit || "NOS",
+                weight_mt: it.weightMT || "0.000",
+              })),
+            };
+            await updateCanvasChallan(editingId, canvasUpdates);
+            showAlert("Challan updated successfully.", "success");
+            await loadBackendCanvasChallans();
+          } else {
+            // Update existing standard challan
+            const updatedChallan = {
+              id: editingId,
+              data,
+              source: editingSource || "manual",
+              previewImageBase64: editingPreview || undefined,
+              savedAt: new Date().toISOString()
+            };
+            await updateChallan(editingId, updatedChallan);
+            showAlert("Challan updated successfully.", "success");
+            await loadBackendChallans();
+          }
         } else {
           // Add new challan
           const newChallan: SavedChallan = {
@@ -343,10 +378,8 @@ export default function Home() {
           };
           await createChallan(newChallan);
           showAlert("Challan added successfully.", "success");
+          await loadBackendChallans();
         }
-
-        // Reload data from backend
-        await loadBackendChallans();
 
         reset();
         setEditingChallan(null);
@@ -361,7 +394,7 @@ export default function Home() {
         showAlert("Failed to save challan to database.", "error");
       }
     },
-    [editingId, editingSource, editingPreview, reset, result, loadBackendChallans, showAlert, currentUser]
+    [editingId, editingSource, editingPreview, reset, result, loadBackendChallans, loadBackendCanvasChallans, showAlert, currentUser]
   );
 
   const handleEditFromDashboard = useCallback((challan: SavedChallan) => {
@@ -369,6 +402,16 @@ export default function Home() {
     setEditingId(challan.id);
     setEditingSource(challan.source || "manual");
     setEditingPreview(challan.previewImageBase64 || null);
+    setIncomingUpdates(null);
+    setLiveChallanData(null);
+    setAppView("edit");
+  }, []);
+
+  const handleEditCanvasFromDashboard = useCallback((canvas: SavedCanvasChallan) => {
+    setEditingChallan(mapCanvasToChallanData(canvas));
+    setEditingId(canvas.id);
+    setEditingSource("scribble");
+    setEditingPreview(canvas.preview_image_base64 || null);
     setIncomingUpdates(null);
     setLiveChallanData(null);
     setAppView("edit");
@@ -559,6 +602,7 @@ export default function Home() {
             onNewVoiceChallan={handleNewVoiceChallan}
             onNewCanvasChallan={() => setAppView("canvas_scribble")}
             onEdit={handleEditFromDashboard}
+            onEditCanvas={handleEditCanvasFromDashboard}
             onView={handleViewChallan}
             onDelete={handleDeleteChallan}
             onDeleteCanvasChallan={handleDeleteCanvasChallan}
