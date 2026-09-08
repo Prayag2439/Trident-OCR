@@ -3,7 +3,7 @@ import json
 import os
 from contextlib import contextmanager
 
-DB_FILE = "challans.db"
+DB_FILE = os.getenv("DB_FILE", "/app/data/challans.db")
 
 def add_column_if_not_exists(cursor, table: str, column: str, col_type: str):
     cursor.execute(f"PRAGMA table_info({table})")

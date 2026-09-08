@@ -20,7 +20,6 @@ services:
       - TEXT_CHAR_THRESHOLD=${TEXT_CHAR_THRESHOLD:-12}
     volumes:
       - trident-db-data:/app/data
-      - ./backend/challans.db:/app/challans.db
       - trident-model-cache:/root/.cache
     ports:
       - "8000:8000"
